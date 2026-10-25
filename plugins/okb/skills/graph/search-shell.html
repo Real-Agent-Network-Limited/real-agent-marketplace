@@ -1,0 +1,260 @@
+<!doctype html>
+<!-- Page shell for the graph skill's search pages, with the slots {{TITLE}} and {{SEARCH_DATA_JSON}}. search_page.py fills them from a file search's result. -->
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>{{TITLE}}</title><style>
+  :root{
+    --ink:#1f1e1d; --ink-soft:#5f5e5a; --ink-faint:#8f8d86;
+    --ground:#ffffff; --panel:#ffffff; --rule:rgba(31,30,29,.12); --rule-strong:rgba(31,30,29,.24); --rule-soft:#f0eee6;
+    --marker:#ffe14d; --meaning:26,110,230; --meaning-ink:#1a6ee6; --graph:#2e9e5b; --graph-dim:rgba(46,158,91,.14);
+    --f-sans:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+    color-scheme:light;
+  }
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --ink:#ece9e1; --ink-soft:#b5b2aa; --ink-faint:#8a877f;
+    --ground:#22211f; --panel:#262522; --rule:rgba(236,233,225,.12); --rule-strong:rgba(236,233,225,.24); --rule-soft:#2c2b28;
+    --marker:#a8891a; --meaning:90,160,255; --meaning-ink:#6eaaff; --graph:#4cc27c; --graph-dim:rgba(76,194,124,.16);
+    color-scheme:dark;
+  }}
+  :root[data-theme="dark"]{
+    --ink:#ece9e1; --ink-soft:#b5b2aa; --ink-faint:#8a877f;
+    --ground:#22211f; --panel:#262522; --rule:rgba(236,233,225,.12); --rule-strong:rgba(236,233,225,.24); --rule-soft:#2c2b28;
+    --marker:#a8891a; --meaning:90,160,255; --meaning-ink:#6eaaff; --graph:#4cc27c; --graph-dim:rgba(76,194,124,.16);
+    color-scheme:dark;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-sans);font-size:13px;line-height:1.55}
+  header{padding:16px 16px 8px;border-bottom:.5px solid var(--rule)}
+  h1{font-size:16px;font-weight:500;margin:0 0 4px;overflow-wrap:anywhere}
+  .counts,.note{color:var(--ink-soft);font-size:12px;margin:2px 0}
+  .key{display:flex;flex-wrap:wrap;gap:14px;margin-top:8px;font-size:12px;color:var(--ink-soft)}
+  .key span{display:inline-flex;align-items:center;gap:6px}
+  .key i{display:inline-block;width:18px;height:10px;border-radius:3px}
+  main{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;padding:16px}
+  @media (max-width:1000px){main{grid-template-columns:minmax(0,1fr)}}
+  #cards{display:flex;flex-direction:column;gap:12px;min-width:0}
+  .card{border:.5px solid var(--rule-strong);border-radius:8px;background:var(--panel);padding:10px 12px;transition:box-shadow .3s,border-color .3s}
+  .card.lit{border-color:var(--graph);box-shadow:0 0 0 2px var(--graph-dim)}
+  .card.picked{border-color:var(--graph);box-shadow:0 0 0 3px var(--graph)}
+  .head{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:baseline}
+  .num{font-weight:500;color:var(--ink-faint)}
+  .file{font-weight:500;overflow-wrap:anywhere}
+  .place{color:var(--ink-soft);overflow-wrap:anywhere}
+  .score{margin-left:auto;color:var(--ink-faint);font-size:11.5px}
+  .ref{font-size:10.5px;padding:0 6px;border:.5px solid var(--rule-strong);border-radius:8px;color:var(--ink-soft)}
+  .badges{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+  .badge{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;padding:1px 8px;border-radius:10px;border:1px solid}
+  .badge.words{border-color:#c9a800;background:color-mix(in srgb,var(--marker) 35%,transparent)}
+  .badge.meaning{border-color:var(--meaning-ink);color:var(--meaning-ink)}
+  .badge.graph{border-color:var(--graph);color:var(--graph)}
+  .bar{display:inline-block;width:46px;height:6px;border-radius:3px;background:rgba(var(--meaning),.18);overflow:hidden}
+  .bar b{display:block;height:100%;background:var(--meaning-ink)}
+  .passage{max-height:300px;overflow-y:auto;border-top:.5px solid var(--rule);padding:6px 0 0 14px;margin-top:4px}
+  .line{position:relative;white-space:pre-wrap;overflow-wrap:anywhere;min-height:1.55em}
+  .line.own::before{content:"";position:absolute;left:-10px;top:2px;bottom:2px;width:2px;border-radius:1px;background:var(--ink-faint)}
+  .hl{position:relative;z-index:0}
+  .hl::before{content:"";position:absolute;z-index:-1;left:-.12em;right:-.12em;top:.08em;bottom:-.04em;background:var(--marker);
+    border-radius:.5em .2em .45em .25em/.35em .5em .3em .5em;transform:skewX(-10deg) rotate(-.8deg);opacity:.92}
+  .ent{text-decoration:underline;text-decoration-color:var(--graph);text-decoration-thickness:2px;text-underline-offset:3px;cursor:pointer}
+  .left{color:var(--ink-faint);font-size:11.5px;margin:4px 0}
+  .ents{font-size:11.5px;color:var(--ink-soft);margin-top:6px}
+  aside{position:sticky;top:12px;align-self:start;border:.5px solid var(--rule-strong);border-radius:8px;background:var(--panel);min-width:0}
+  @media (max-width:1000px){aside{position:static}}
+  .gbar{display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:.5px solid var(--rule);flex-wrap:wrap}
+  .gbar .t{font-weight:500;color:var(--graph)}
+  .gbar .s{color:var(--ink-faint);font-size:11.5px}
+  button{font-family:var(--f-sans);font-size:12px;height:28px;padding:0 10px;background:var(--panel);color:var(--ink);border:.5px solid var(--rule-strong);border-radius:8px;cursor:pointer}
+  button:hover{border-color:var(--ink)}
+  button:focus-visible{outline:2px solid var(--graph);outline-offset:1px}
+  #gwrap{overflow:auto;max-height:calc(100vh - 80px)}
+  svg text{font-family:var(--f-sans);font-size:11px;fill:var(--ink);paint-order:stroke;stroke:var(--panel);stroke-width:3px;stroke-linejoin:round}
+  .edge{stroke:var(--graph);stroke-width:1.4;fill:none;opacity:.85}
+  .edge.off{opacity:0}
+  .node circle{fill:var(--panel);stroke:var(--graph);stroke-width:1.5;transition:fill .3s,opacity .3s}
+  .node.on circle{fill:var(--graph)}
+  .node.off{opacity:.18}
+  .node{cursor:pointer;pointer-events:bounding-box}
+  .node.picked circle{stroke:var(--ink);stroke-width:2.5}
+</style></head><body>
+<script type="application/json" id="search-data">{{SEARCH_DATA_JSON}}</script>
+<header>
+  <h1 id="question"></h1>
+  <p class="counts" id="counts"></p>
+  <p class="note" id="note"></p>
+  <div class="key"><span><i style="background:var(--marker)"></i>The question's words</span><span><i style="background:rgba(var(--meaning),.45)"></i>Meaning near the question's</span><span><i style="background:var(--graph)"></i>The graph walk</span></div>
+</header>
+<main><section id="cards" aria-label="Hits"></section>
+<aside aria-label="Graph walk"><div class="gbar"><span class="t">Graph walk</span><button id="play" type="button">Play</button><span class="s" id="gstep"></span></div><div id="gwrap"><svg id="graph" role="img" aria-label="The graph walk from its starting points to the hits"></svg></div></aside></main>
+<script>
+(function () {
+  const data = JSON.parse(document.getElementById("search-data").textContent);
+  const NS = "http://www.w3.org/2000/svg", STEP_MS = 1200;
+  const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; };
+  const c = data.counts;
+  document.getElementById("question").textContent = data.question;
+  document.getElementById("counts").textContent = `Words found ${c.words}, meaning ${c.meaning} and the graph ${c.graph}; ${c.fused} merged, ${c.returned} returned.`;
+  const shaded = data.cards.reduce((n, card) => n + card.sentences.length, 0);
+  document.getElementById("note").textContent = (shaded ? `${shaded} sentences compared with the question, in ${data.explainMs} ms. Hover a shaded sentence for its similarity.`
+    : data.explained ? `No hit's sentences have their vectors yet${data.awaiting ? `: ${data.awaiting} are waiting` : ""}.` : "The search was not explained, so no sentence is shaded.")
+    + (data.awaiting && shaded ? ` ${data.awaiting} of the hits' sentences are still waiting for their vectors.` : "") + (data.degraded ? ` ${data.degraded}` : "");
+
+  // Sentence shading runs from the faintest to the strongest similarity on the page.
+  const sims = data.cards.flatMap(card => card.sentences.map(s => s.similarity));
+  const lo = Math.min(...sims), hi = Math.max(...sims);
+  const strength = s => sims.length < 2 || hi === lo ? 0.3 : 0.06 + 0.42 * (s - lo) / (hi - lo);
+
+  const cardsOf = {}; // entity id → the cards naming it
+  const cardEls = [];
+  for (const card of data.cards) {
+    const box = el("article", "card"); box.id = `hit-${card.n}`; cardEls.push(box);
+    const head = el("div", "head");
+    head.append(el("span", "num", `${card.n}.`), el("span", "file", card.file));
+    if (card.place) head.append(el("span", "place", card.place));
+    if (card.reference) head.append(el("span", "ref", "reference"));
+    head.append(el("span", "score", `fusion ${card.score}`));
+    box.append(head);
+    const badges = el("div", "badges");
+    for (const way of ["words", "meaning", "graph"]) {
+      if (!card.found.includes(way)) continue;
+      const b = el("span", `badge ${way}`, `${way === "words" ? "Words" : way === "meaning" ? "Meaning" : "Graph"} #${card.ranks[way]}`);
+      if (way === "meaning" && card.similarity !== null) {
+        const bar = el("span", "bar"); const fill = el("b"); fill.style.width = `${Math.round(card.similarity * 100)}%`; bar.append(fill);
+        b.append(bar, el("span", "", card.similarity.toFixed(4)));
+      }
+      badges.append(b);
+    }
+    box.append(badges);
+    if (card.section !== null) box.append(passage(card, data.sections[card.section]));
+    if (card.entities.length) box.append(el("div", "ents", "Names: " + card.entities.map(e => e.name).join(", ")));
+    for (const e of card.entities) (cardsOf[e.id] = cardsOf[e.id] || new Set()).add(card.n);
+    document.getElementById("cards").append(box);
+  }
+
+  // The section's text, a line at a time, each character marked by the word marks, the sentence it
+  // falls in, and the entity named there; a run of characters with the same marks is one span.
+  function passage(card, section) {
+    const wrap = el("div", "passage");
+    const chars = Array.from(section.text), n = chars.length;
+    const hl = new Uint8Array(n), sent = new Int32Array(n).fill(-1), ent = new Array(n).fill(null);
+    for (const [a, b] of section.marks) for (let i = a; i < b && i < n; i++) hl[i] = 1;
+    card.sentences.forEach((s, k) => { for (let i = s.start; i < s.end && i < n; i++) sent[i] = k; });
+    for (const [a, b, id] of section.entities) for (let i = a; i < b && i < n; i++) ent[i] = id;
+    if (section.truncated && section.before) wrap.append(el("div", "left", `${section.before} characters before this part are left out.`));
+    if (card.chunk === null) wrap.append(el("div", "left", "This hit's own passage lies outside the part returned."));
+    let first = null, at = 0;
+    for (const lineText of section.text.split("\n")) {
+      const len = Array.from(lineText).length, from = at, to = at + len;
+      const line = el("div", "line");
+      if (card.chunk && from < card.chunk.end && to >= card.chunk.start && (len || (from >= card.chunk.start && from < card.chunk.end))) {
+        line.classList.add("own"); first = first || line;
+      }
+      let i = from;
+      while (i < to) {
+        let j = i + 1;
+        while (j < to && hl[j] === hl[i] && sent[j] === sent[i] && ent[j] === ent[i]) j++;
+        const span = el("span", "", chars.slice(i, j).join(""));
+        if (hl[i]) span.classList.add("hl");
+        if (sent[i] >= 0) {
+          const s = card.sentences[sent[i]];
+          span.style.backgroundColor = `rgba(var(--meaning),${strength(s.similarity).toFixed(3)})`;
+          span.title = `Similarity ${s.similarity.toFixed(4)}`;
+        }
+        if (ent[i]) { span.classList.add("ent"); span.dataset.entity = ent[i]; span.addEventListener("click", () => pick(ent[i])); }
+        line.append(span);
+        i = j;
+      }
+      wrap.append(line);
+      at = to + 1;
+    }
+    if (section.truncated && section.after) wrap.append(el("div", "left", `${section.after} characters after this part are left out.`));
+    if (first) requestAnimationFrame(() => { wrap.scrollTop = Math.max(0, first.offsetTop - wrap.offsetTop - 8); });
+    return wrap;
+  }
+
+  // The graph, laid out once by search_page.py.
+  const g = data.graph, svg = document.getElementById("graph");
+  svg.setAttribute("width", g.width); svg.setAttribute("height", Math.max(g.height, 60)); svg.setAttribute("viewBox", `0 0 ${g.width} ${Math.max(g.height, 60)}`);
+  const at = {}; g.nodes.forEach(n => { at[n.id] = n; });
+  const nodeEls = {};
+  for (const n of g.nodes) {
+    const grp = document.createElementNS(NS, "g"); grp.setAttribute("class", "node"); grp.dataset.entity = n.id;
+    const r = n.seed ? 4 + 8 * Math.max(0, Math.min(1, n.similarity || 0)) : 5;
+    const circle = document.createElementNS(NS, "circle"); circle.setAttribute("cx", n.x); circle.setAttribute("cy", n.y); circle.setAttribute("r", r.toFixed(1));
+    const label = document.createElementNS(NS, "text"); label.setAttribute("x", n.x + 14); label.setAttribute("y", n.y + 4);
+    label.textContent = n.name.length > 30 ? n.name.slice(0, 29) + "…" : n.name;
+    const title = document.createElementNS(NS, "title"); title.textContent = n.seed ? `${n.name}: a starting point, similarity ${n.similarity}` : `${n.name}: reached at step ${n.step}`;
+    grp.append(circle, label, title); grp.addEventListener("click", () => pick(n.id));
+    svg.append(grp); nodeEls[n.id] = grp;
+  }
+
+  // Each relation leaves its entity after the entity's name, and is drawn under the entities.
+  const first = svg.firstChild;
+  const edgeEls = g.edges.map(e => {
+    const a = at[e.from], b = at[e.to], path = document.createElementNS(NS, "path");
+    const x1 = a.x + 16 + nodeEls[a.id].querySelector("text").getComputedTextLength(), x2 = b.x - 8, mid = (x1 + x2) / 2;
+    path.setAttribute("d", a.x === b.x ? `M${a.x},${a.y} C${a.x + 60},${a.y} ${b.x + 60},${b.y} ${b.x},${b.y}` : `M${x1},${a.y} C${mid},${a.y} ${mid},${b.y} ${x2},${b.y}`);
+    path.setAttribute("class", "edge");
+    const title = document.createElementNS(NS, "title"); title.textContent = `${a.name} → ${b.name}${e.keywords.length ? ` (${e.keywords.join(", ")})` : ""}, step ${e.step}`;
+    path.append(title); svg.insertBefore(path, first);
+    return { e, path };
+  });
+
+  // A frame of the walk: the starting points at 0, then each step's relations and what they reach.
+  function frame(step) {
+    for (const n of g.nodes) {
+      const shown = n.step <= step;
+      nodeEls[n.id].classList.toggle("off", !shown);
+      nodeEls[n.id].classList.toggle("on", shown && n.step === step && step > 0);
+    }
+    for (const { e, path } of edgeEls) path.classList.toggle("off", e.step > step);
+    const reached = new Set(g.nodes.filter(n => n.step <= step).map(n => n.id));
+    for (const card of data.cards) cardEls[card.n - 1].classList.toggle("lit", card.entities.some(e => reached.has(e.id)));
+    document.getElementById("gstep").textContent = step === 0 ? "Starting points" : `Step ${step} of ${g.steps}`;
+  }
+  // A step's relations are drawn along their lines.
+  function draw(step) {
+    for (const { e, path } of edgeEls) {
+      if (e.step !== step || reduced) continue;
+      const len = path.getTotalLength();
+      path.style.transition = "none"; path.style.strokeDasharray = `${len}`; path.style.strokeDashoffset = `${len}`;
+      path.getBoundingClientRect();
+      path.style.transition = `stroke-dashoffset ${STEP_MS * 0.8}ms ease-out`; path.style.strokeDashoffset = "0";
+    }
+  }
+  let timer = null;
+  const play = document.getElementById("play");
+  play.addEventListener("click", () => {
+    clearTimeout(timer);
+    if (reduced) { frame(g.steps); play.textContent = "Replay"; return; }
+    let step = 0;
+    frame(0);
+    const next = () => {
+      step++;
+      if (step > g.steps) { play.textContent = "Replay"; return; }
+      frame(step); draw(step);
+      timer = setTimeout(next, STEP_MS);
+    };
+    timer = setTimeout(next, STEP_MS);
+  });
+
+  // Clicking an entity lights the hits that name it.
+  function pick(id) {
+    for (const box of cardEls) box.classList.remove("picked");
+    for (const grp of Object.values(nodeEls)) grp.classList.remove("picked");
+    if (nodeEls[id]) nodeEls[id].classList.add("picked");
+    const hits = [...(cardsOf[id] || [])];
+    hits.forEach(n => cardEls[n - 1].classList.add("picked"));
+    if (hits.length) cardEls[hits[0] - 1].scrollIntoView({ behavior: reduced ? "auto" : "smooth", block: "nearest" });
+  }
+  // With #from-N after its address, the page starts from card N, and says so.
+  const from = Number((/^#from-(\d+)$/.exec(location.hash) || [])[1] || 0);
+  if (from > 1) {
+    cardEls.slice(0, from - 1).forEach(box => { box.hidden = true; });
+    const note = el("p", "left", `Cards 1 to ${from - 1} are hidden. Open the page without #from-${from} to see every card.`);
+    document.getElementById("cards").prepend(note);
+  }
+  window.searchPage = { frame, data };
+  frame(g.steps);
+})();
+</script></body></html>

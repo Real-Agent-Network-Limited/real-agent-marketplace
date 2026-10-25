@@ -1,0 +1,142 @@
+<!doctype html>
+<!-- Page shell for the board skill's model board, with the slots {{TITLE}} and {{BOARD_DATA_JSON}}. model_board.py fills them. The page loads nothing from the network. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<style>
+/* The model's title and description as the header, then its rows of cards. In a row, a place heads a column and the cards linked to it sit under it. Below 760 pixels a row's cards stack. */
+:root { --bg: #fff; --ink: #1d1d1f; --mute: #5f6368; --line: #c9ced6; --site: #f4f4f6; --gap: #fff7e0; --gapb: #e0b84c; --accent: #1A9FFF;
+  --t0: #e3f1fb; --b0: #7fb6dc; --t1: #ece9fa; --b1: #8a7fd0; --t2: #e6f4ea; --b2: #7cbf8e; --t3: #fbe9ec; --b3: #d98a98; color-scheme: light; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #16181c; --ink: #ecedef; --mute: #a3a8b0; --line: #3a3f47; --site: #22252b; --gap: #3b3317; --gapb: #a98a2c;
+  --t0: #1f3445; --b0: #4d86aa; --t1: #2a2748; --b1: #6f65b8; --t2: #1f3a2a; --b2: #4f9a68; --t3: #43242b; --b3: #b06574; color-scheme: dark; } }
+:root[data-theme="dark"] { --bg: #16181c; --ink: #ecedef; --mute: #a3a8b0; --line: #3a3f47; --site: #22252b; --gap: #3b3317; --gapb: #a98a2c;
+  --t0: #1f3445; --b0: #4d86aa; --t1: #2a2748; --b1: #6f65b8; --t2: #1f3a2a; --b2: #4f9a68; --t3: #43242b; --b3: #b06574; color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 24px 16px 40px; background: var(--bg); color: var(--ink); font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 1100px; margin: 0 auto; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+p.sub { margin: 0 0 6px; color: var(--mute); }
+p.meta { margin: 0 0 20px; color: var(--mute); font-size: 13px; }
+h2 { font-size: 13px; letter-spacing: .06em; text-transform: uppercase; color: var(--mute); margin: 26px 0 8px; }
+.scroll { overflow-x: auto; }
+.chart h2 { position: sticky; left: 0; width: max-content; }
+.row { display: grid; gap: 12px; grid-auto-flow: row dense; }
+.row + .row, .row + .scroll { margin-top: 12px; }
+.free { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.card { display: block; border: 1.5px solid; border-radius: 10px; padding: 10px 12px; cursor: pointer; text-align: left; grid-column: var(--c, auto); }
+.card b { display: block; font-size: 16px; }
+.card .role { color: var(--mute); font-size: 13px; margin-bottom: 4px; }
+.card .for { font-size: 14px; }
+.card:focus-visible, .card.selected { outline: 2px solid var(--accent); outline-offset: 1px; }
+.c0 { background: var(--t0); border-color: var(--b0); } .c1 { background: var(--t1); border-color: var(--b1); }
+.c2 { background: var(--t2); border-color: var(--b2); } .c3 { background: var(--t3); border-color: var(--b3); }
+.card.gap { background: var(--gap); border-color: var(--gapb); border-style: dashed; }
+.card.site { background: var(--site); border-color: var(--line); text-align: center; }
+.card.site .for { font-size: 13px; color: var(--mute); }
+p.foot { color: var(--mute); font-size: 13px; margin: 24px 0 0; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100%); background: var(--bg); border-left: 1px solid var(--line); padding: 18px 20px 20px; overflow-y: auto; display: grid; gap: 14px; align-content: start; z-index: 10; }
+.drawer[hidden] { display: none; }
+.drawer-head { display: flex; gap: 12px; align-items: start; }
+.drawer h3 { margin: 2px 0 0; font-size: 17px; overflow-wrap: anywhere; }
+.kind { font-size: 12px; color: var(--mute); }
+.close { margin-left: auto; font: inherit; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; width: 30px; height: 30px; cursor: pointer; flex: none; }
+.close:focus-visible { outline: 2px solid var(--accent); }
+.label { font-size: 12px; font-weight: 600; color: var(--mute); margin: 0 0 6px; text-transform: uppercase; letter-spacing: .05em; }
+.note { font-size: 14px; white-space: pre-wrap; overflow-wrap: anywhere; }
+ul.plain { margin: 0; padding-left: 18px; font-size: 14px; display: grid; gap: 4px; overflow-wrap: anywhere; }
+ul.plain small { color: var(--mute); }
+dl { margin: 0; display: grid; grid-template-columns: 120px 1fr; gap: 6px 12px; font-size: 14px; }
+dt { color: var(--mute); } dd { margin: 0; overflow-wrap: anywhere; }
+@media (max-width: 760px) { .row, .free { grid-template-columns: 1fr !important; } .card { grid-column: auto !important; } .wide { min-width: 0 !important; } }
+</style>
+</head>
+<body>
+<main>
+  <h1 id="title"></h1>
+  <p class="sub" id="sub"></p>
+  <p class="meta" id="meta"></p>
+  <div id="rows"></div>
+  <p class="foot">Click a card to see its lines to other nodes and the evidence behind it.</p>
+</main>
+<aside class="drawer" id="drawer" hidden aria-label="Card detail"></aside>
+<script type="application/json" id="board-data">{{BOARD_DATA_JSON}}</script>
+<script>
+(function () {
+  var data = JSON.parse(document.getElementById("board-data").textContent);
+  var cards = data.cards, selected = null;
+  function esc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  function day(iso) { return iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "Europe/London" }) : ""; }
+  // In a grouped board each row has its own colour; by level, each type has one.
+  var types = []; Object.keys(cards).forEach(function (id) { if (types.indexOf(cards[id].type) < 0) types.push(cards[id].type); });
+  function tint(c, rowAt) { return c.gap ? " gap" : c.place ? " site" : " c" + ((data.layout === "group" ? rowAt : types.indexOf(c.type)) % 4); }
+  function card(id, rowAt, col) {
+    var c = cards[id];
+    return '<div class="card' + tint(c, rowAt) + (selected === id ? " selected" : "") + '" role="button" tabindex="0" data-id="' + esc(id) + '"' + (col ? ' style="--c:' + col + '"' : "") + ">" +
+      "<b>" + esc(c.label) + "</b>" + (c.role ? '<div class="role">' + esc(c.role) + "</div>" : "") + (c.description ? '<div class="for">' + esc(c.description) + "</div>" : "") + "</div>";
+  }
+  function render() {
+    document.getElementById("title").textContent = data.title;
+    document.getElementById("sub").textContent = data.description;
+    document.getElementById("meta").textContent = "Version " + data.version_number + (data.saved_at ? ", saved " + day(data.saved_at) : "") +
+      (data.layout === "group" ? ". Grouped by " + data.by + "." : ". By level of " + data.by + ".");
+    function placed(row, at) {
+      return row.places.map(function (id, i) { return card(id, at, (i + 1) + " / " + (i + 2)); }).concat(row.under.map(function (u) { return card(u.id, at, u.from + " / " + u.to); }));
+    }
+    function free(row, at) { return row.cards.length ? '<div class="row free">' + row.cards.map(function (id) { return card(id, at); }).join("") + "</div>" : ""; }
+    if (data.layout === "level") {
+      // Every level is in one box, which scrolls as one, so each card stays under its boss. The top row's cards outside the relation sit above it.
+      var top = data.rows[0], cols = "repeat(" + top.columns + ", minmax(180px, 1fr))";
+      document.getElementById("rows").innerHTML = (top.cards.length ? "<h2>Beside the chart</h2>" + free(top, 0) : "") +
+        '<div class="scroll chart"><div class="wide" style="min-width:' + top.columns * 190 + 'px">' + data.rows.map(function (row, at) {
+          return "<h2>" + esc(row.name) + '</h2><div class="row" style="grid-template-columns:' + cols + '">' + placed(row, at).join("") + "</div>";
+        }).join("") + "</div></div>";
+      return;
+    }
+    document.getElementById("rows").innerHTML = data.rows.map(function (row, at) {
+      var html = "<h2>" + esc(row.name) + "</h2>" + free(row, at);
+      if (row.columns) {
+        var cards = placed(row, at);
+        if (cards.length) html += '<div class="scroll"><div class="row wide" style="grid-template-columns:repeat(' + row.columns + ', minmax(180px, 1fr))">' + cards.join("") + "</div></div>";
+      }
+      return html;
+    }).join("");
+  }
+  function openDrawer(id) {
+    selected = id;
+    var c = cards[id], m = data.model_evidence, d = document.getElementById("drawer");
+    var details = Object.keys(c.details).map(function (k) { return "<dt>" + esc(k) + "</dt><dd>" + esc(c.details[k]) + "</dd>"; }).join("");
+    var lines = c.lines.length ? '<ul class="plain">' + c.lines.map(function (l) { return "<li>" + esc(l.text) + (l.note ? " <small>(" + esc(l.note) + ")</small>" : "") + "</li>"; }).join("") + "</ul>" : '<div class="note">None</div>';
+    var evidence = c.evidence.length ? '<ul class="plain">' + c.evidence.map(function (e) { return "<li>" + esc(e) + "</li>"; }).join("") + "</ul>"
+      : '<div class="note">From the model' + (m.status ? ": " + esc(m.status) : "") + "</div>" + (m.sources ? '<div class="note">' + esc(m.sources) + "</div>" : "");
+    d.innerHTML = '<div class="drawer-head"><div><div class="kind">' + esc(c.type) + (c.gap ? " · gap" : "") + "</div><h3>" + esc(c.label) + '</h3></div><button class="close" id="close" aria-label="Close">×</button></div>' +
+      (c.role ? '<div class="note">' + esc(c.role) + "</div>" : "") + (c.description ? '<div class="note">' + esc(c.description) + "</div>" : "") +
+      (details ? "<dl>" + details + "</dl>" : "") +
+      '<div><p class="label">Lines</p>' + lines + "</div>" +
+      '<div><p class="label">Evidence</p>' + evidence + (m.linked ? '<div class="note">' + m.linked + " evidence record" + (m.linked === 1 ? "" : "s") + " linked to the model in OKB</div>" : "") + "</div>";
+    d.hidden = false;
+    render();
+    document.getElementById("close").focus();
+  }
+  function closeDrawer() {
+    var back = selected; selected = null;
+    document.getElementById("drawer").hidden = true;
+    render();
+    var el = document.querySelector('.card[data-id="' + CSS.escape(back) + '"]'); if (el) el.focus();
+  }
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest(".card, #close");
+    if (!t) return;
+    if (t.id === "close") return closeDrawer();
+    openDrawer(t.dataset.id);
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && selected) closeDrawer();
+    if ((e.key === "Enter" || e.key === " ") && e.target.classList && e.target.classList.contains("card")) { e.preventDefault(); openDrawer(e.target.dataset.id); }
+  });
+  render();
+})();
+</script>
+</body>
+</html>

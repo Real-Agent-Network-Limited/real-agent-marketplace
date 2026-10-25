@@ -1,0 +1,11 @@
+{
+  "name": "real-agent",
+  "description": "Two agents every firm gets with its organisational knowledge base (OKB): the database operator, for every member of staff, and the database admin, for the firm's administrator.",
+  "version": "0.4.0",
+  "author": {
+    "name": "Real Agent"
+  },
+  "dependencies": [
+    "okb"
+  ]
+}

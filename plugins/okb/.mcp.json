@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "okb": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/mcp/server.mjs"
+      ],
+      "env": {
+        "SUPABASE_SESSION_FOLDER": "${CLAUDE_PROJECT_DIR}",
+        "SUPABASE_PROJECT_REF": "${user_config.project_ref}",
+        "SUPABASE_AUTH_EMAIL": "${user_config.auth_email}",
+        "SUPABASE_AGENT_FOLDER": "${user_config.agent_folder}",
+        "SUPABASE_WHISPER_CLI": "${user_config.whisper_cli}",
+        "SUPABASE_WHISPER_MODEL": "${user_config.whisper_model}"
+      }
+    }
+  }
+}

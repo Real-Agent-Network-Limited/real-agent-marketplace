@@ -1,0 +1,23 @@
+{
+  "workflow": "appraisal",
+  "scope": {
+    "code": "appraisal",
+    "display_name": "Appraisal",
+    "description": "Each market appraisal, from the vendor's first call to the instruction."
+  },
+  "roles": {
+    "negotiator": {
+      "description": "A negotiator books and carries out appraisals, and sees only the appraisals they started.",
+      "grants": [
+        { "scope": "appraisal", "record_kinds": ["activity", "decision", "model", "evidence"], "actions": ["read", "create", "edit", "start", "complete", "cancel"], "own_records": true }
+      ]
+    },
+    "manager": {
+      "description": "The branch manager sees every appraisal, takes one over, and decides on the price advice.",
+      "grants": [
+        { "scope": "appraisal", "record_kinds": ["activity", "decision", "model", "evidence"], "actions": ["read", "create", "edit", "start", "hold", "complete", "reopen", "cancel", "decide"], "own_records": false }
+      ]
+    }
+  },
+  "plugin_readers": ["negotiator", "manager"]
+}

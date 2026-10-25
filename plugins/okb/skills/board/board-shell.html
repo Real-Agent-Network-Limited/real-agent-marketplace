@@ -1,0 +1,431 @@
+<!doctype html>
+<!-- Page shell for the board skill's progress board, with the slots {{TITLE}} and {{BOARD_DATA_JSON}}. board_page.py fills them. The page loads nothing from the network. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}}</title>
+<style>
+/* The plan as the header, a timetable strip, then a row for each part of the plan across one column per state. A part that is a plan is only its row's heading; its cards are the activities under it. With two or more parts, a tab for each part and All pick the rows shown. */
+:root {
+  --text-primary: #1f1e1d; --text-secondary: #5f5e5a; --text-muted: #8f8d86;
+  --surface-1: #f0eee6; --surface-2: #ffffff; --border: rgba(31,30,29,.12); --border-strong: rgba(31,30,29,.24);
+  --blue: #1A9FFF; --amber: #EF9F27;
+  --accent: var(--blue); --accent-soft: rgba(26,159,255,.12);
+  --pending: var(--text-muted); --in-progress: rgba(31,30,29,.42); --hold: var(--amber);
+  --done: var(--text-primary); --cancelled: var(--text-muted); --late: var(--amber); --late-soft: rgba(239,159,39,.15);
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --text-primary: #ece9e1; --text-secondary: #b5b2aa; --text-muted: #8a877f;
+  --surface-1: #262522; --surface-2: #22211f; --border: rgba(236,233,225,.12); --border-strong: rgba(236,233,225,.24);
+  --in-progress: rgba(236,233,225,.42); color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --text-primary: #ece9e1; --text-secondary: #b5b2aa; --text-muted: #8a877f;
+  --surface-1: #262522; --surface-2: #22211f; --border: rgba(236,233,225,.12); --border-strong: rgba(236,233,225,.24);
+  --in-progress: rgba(236,233,225,.42); color-scheme: dark; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--surface-2); color: var(--text-primary); font: 14px/1.5 var(--mono); }
+.wrap { padding-inline: 16px; padding-block: 20px 40px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 18px; }
+header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: end; justify-content: space-between; }
+h1 { margin: 2px 0 0; font-size: 22px; font-weight: 500; text-wrap: balance; }
+.plan-meta { color: var(--text-secondary); font-size: 13px; }
+.purpose { margin: 0; font-size: 14px; text-wrap: pretty; }
+.purpose b { font-weight: 500; margin-right: 6px; flex: none; }
+/* The purpose opens folded to its first line, ending in Show more; open, it ends in Show less. */
+.purpose summary { display: flex; align-items: baseline; cursor: pointer; list-style: none; }
+.purpose summary::-webkit-details-marker { display: none; }
+.purpose summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.purpose .more { flex: none; margin-left: 10px; font-size: 12px; color: var(--accent); }
+.purpose .less, .purpose[open] .more-label { display: none; }
+.purpose[open] .less { display: inline; }
+.purpose[open] summary { display: block; }
+#purpose-text { flex: 1 1 auto; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.purpose[open] #purpose-text { white-space: normal; }
+.read-at { font: 12px var(--mono); color: var(--text-muted); text-align: right; }
+.read-at b { color: var(--text-primary); font-weight: 500; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex: none; }
+.panel { background: var(--surface-2); border: .5px solid var(--border-strong); border-radius: 8px; padding: 14px 16px 10px; }
+.panel h2 { margin: 0 0 10px; font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.timeline-scroll { overflow-x: auto; }
+.timeline { position: relative; min-width: 720px; height: 74px; }
+.tl-bar { position: absolute; top: 22px; height: 26px; border-radius: 4px; display: flex; align-items: center; justify-content: center; overflow: hidden; white-space: nowrap;
+  font: 500 11px var(--mono); color: var(--text-primary); background: var(--surface-1); border: .5px solid var(--border-strong); cursor: pointer; padding: 0 2px; }
+.tl-bar:hover, .tl-bar:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tl-bar.late { background: var(--late-soft); border-color: var(--late); color: var(--text-primary); }
+.tl-bar.due { border-color: var(--hold); border-width: 1px; }
+.tl-bar.done { border-color: var(--done); }
+.tl-tick { position: absolute; top: 54px; font: 10.5px var(--mono); color: var(--text-muted); transform: translateX(-50%); white-space: nowrap; }
+.tl-tickline { position: absolute; top: 18px; height: 34px; width: .5px; background: var(--border-strong); }
+.tl-now { position: absolute; top: 0; bottom: 18px; width: 1px; background: var(--late); }
+.tl-now span { position: absolute; top: 0; left: 5px; font: 500 10.5px var(--mono); color: var(--late); white-space: nowrap; }
+.toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip { font: 400 12px var(--mono); height: 30px; padding: 0 10px; border-radius: 8px; border: .5px solid var(--border-strong); background: var(--surface-2); color: var(--text-primary); cursor: pointer; }
+.chip[aria-pressed="true"] { background: var(--text-primary); border-color: var(--text-primary); color: var(--surface-2); }
+.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tab { font: 400 12px var(--mono); min-height: 30px; padding: 4px 12px; border-radius: 8px; border: .5px solid var(--border-strong); background: var(--surface-2); color: var(--text-primary); cursor: pointer; text-align: left; }
+.tab .ix { font-size: 12px; }
+.tab.cancelled { color: var(--text-muted); border-style: dashed; }
+.tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface-2); }
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.board-scroll { overflow: auto; max-height: calc(100vh - 24px); min-height: 320px; border-radius: 8px; background: var(--surface-1); }
+.lanes { display: grid; min-width: 1100px; background: var(--surface-1); border-radius: 8px; padding: 6px 10px 10px; }
+.lanes > * { min-width: 0; }
+.lane { display: contents; }
+.col-head { display: flex; align-items: center; gap: 8px; padding: 8px 8px 10px; font-weight: 500; font-size: 13px; }
+.lanes > .group-head, .lanes > .col-head, .lanes > .corner { position: sticky; background: var(--surface-1); z-index: 2; }
+.lanes > .group-head, .lanes > .corner { top: 0; }
+.lanes > .col-head { top: var(--group-h, 0px); }
+.group-head { padding: 8px 8px 0; font-size: 12px; font-weight: 500; color: var(--text-muted); }
+.col-head .n { margin-left: auto; font: 400 12px var(--mono); color: var(--text-muted); }
+.lane-head, .cell { border-top: .5px solid var(--border-strong); padding: 10px 8px; }
+.cell { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-content: start; min-height: 64px; }
+.cell + .cell { border-left: .5px dashed var(--border-strong); }
+.lane-head { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; align-content: start; cursor: pointer; }
+.lane-head:hover .name { text-decoration: underline; }
+.lane-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.lane-head.selected .name { color: var(--accent); }
+.lane-head .name { font-weight: 500; font-size: 13px; line-height: 1.3; overflow-wrap: anywhere; }
+.lane.late .lane-head { border-left: 2px solid var(--late); padding-left: 10px; }
+.dates { font: 11.5px var(--mono); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.fold { cursor: pointer; border: 0; background: none; font: inherit; color: inherit; padding: 8px 0; }
+.fold .col-head { writing-mode: vertical-rl; padding: 0; gap: 10px; position: sticky; top: 0; bottom: 0; background: var(--surface-1); z-index: 2; }
+.fold:focus-visible { outline: 2px solid var(--accent); }
+.empty { font-size: 12.5px; color: var(--text-muted); padding: 14px 6px; border-top: .5px solid var(--border-strong); text-align: center; }
+.card { background: var(--surface-2); border-radius: 8px; padding: 10px 12px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; cursor: pointer; border: .5px solid var(--border); text-align: left; font: inherit; color: inherit; width: 100%; }
+.card:hover { border-color: var(--border-strong); }
+.card:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.card.selected { border-color: var(--accent); }
+.card.is-late { border-left: 2px solid var(--late); border-radius: 0 8px 8px 0; padding-left: 11px; }
+.kind { font: 400 11px var(--mono); color: var(--text-muted); }
+.kind.deliverable { color: var(--text-secondary); }
+.kind.blocker { color: var(--late); }
+.ix { font: 500 12px var(--mono); margin-right: 6px; font-variant-numeric: tabular-nums; }
+.card-title { font-weight: 500; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.badges { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
+.badge { font: 400 11px var(--mono); padding: 1px 7px; border-radius: 8px; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.badge.late { background: var(--late-soft); color: var(--text-primary); }
+.badge.due { background: var(--surface-2); color: var(--text-primary); border: .5px solid var(--hold); }
+.badge.blocked { background: var(--late-soft); color: var(--text-primary); border: .5px solid var(--late); }
+.badge.dep { background: var(--surface-1); color: var(--text-secondary); }
+.badge.deliv { background: var(--surface-2); color: var(--text-primary); border: .5px solid var(--border-strong); }
+.badge.nodeliv { background: var(--surface-2); color: var(--text-primary); border: .5px dashed var(--hold); }
+.checklist { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.checklist li { display: grid; grid-template-columns: 92px 1fr; gap: 10px; align-items: start; }
+.mark { font: 400 11px var(--mono); padding: 1px 7px; border-radius: 8px; justify-self: start; }
+.mark.done { background: var(--surface-2); color: var(--text-primary); border: .5px solid var(--border-strong); }
+.mark.missing { background: var(--late-soft); color: var(--text-primary); border: .5px solid var(--late); }
+.mark.unknown, .mark.later { background: var(--surface-1); color: var(--text-muted); border: .5px solid var(--border); }
+.plain { margin: 0; padding-left: 18px; font-size: 13px; display: grid; gap: 4px; overflow-wrap: anywhere; }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(440px, 100%); background: var(--surface-2); border-left: .5px solid var(--border-strong);
+  padding: 18px 20px 20px; overflow-y: auto; display: grid; gap: 16px; align-content: start; z-index: 10; }
+.drawer[hidden] { display: none; }
+.drawer { grid-template-columns: minmax(0, 1fr); }
+.drawer .badge { white-space: normal; overflow-wrap: anywhere; }
+.drawer-head { display: flex; gap: 12px; align-items: start; }
+.drawer h3 { margin: 4px 0 0; font-size: 16px; font-weight: 500; line-height: 1.35; text-wrap: balance; overflow-wrap: anywhere; }
+.close { margin-left: auto; font: 400 14px var(--mono); background: var(--surface-2); border: .5px solid var(--border-strong); border-radius: 8px; width: 30px; height: 30px; cursor: pointer; color: var(--text-primary); flex: none; }
+.close:focus-visible, .copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.state-pill { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; font-weight: 500; padding: 3px 10px; border-radius: 8px; background: var(--surface-1); }
+dl { margin: 0; display: grid; grid-template-columns: 124px 1fr; gap: 7px 12px; font-size: 13px; }
+dt { color: var(--text-muted); }
+dd { margin: 0; min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+dd.record-id { display: grid; gap: 6px; }
+dd.record-id code { font: 12px var(--mono); overflow-wrap: anywhere; }
+.section-label { font-size: 12px; font-weight: 500; color: var(--text-muted); margin: 0 0 6px; }
+.note { font-size: 13px; color: var(--text-secondary); white-space: pre-wrap; overflow-wrap: anywhere; }
+.ask { background: var(--surface-1); border-radius: 8px; padding: 10px 12px; font-size: 13px; display: grid; gap: 8px; }
+.ask code { font: 12px var(--mono); background: var(--surface-2); padding: 6px 8px; border-radius: 8px; display: block; overflow-wrap: anywhere; }
+.copy { justify-self: start; font: 400 12px var(--mono); height: 30px; padding: 0 10px; border-radius: 8px; border: .5px solid var(--border-strong); background: var(--surface-2); color: var(--text-primary); cursor: pointer; }
+@media (prefers-reduced-motion: no-preference) { .drawer { animation: slide .18s ease-out; } @keyframes slide { from { transform: translateX(24px); opacity: .6; } } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1 id="plan-title"></h1>
+      <div class="plan-meta" id="plan-meta"></div>
+    </div>
+    <div class="read-at" id="read-at"></div>
+  </header>
+  <details class="purpose" id="purpose"><summary><b>Purpose</b><span id="purpose-text"></span><span class="more"><span class="more-label">Show more</span><span class="less">Show less</span></span></summary></details>
+  <section class="panel" aria-labelledby="tl-h">
+    <h2 id="tl-h">Timetable</h2>
+    <div class="timeline-scroll"><div class="timeline" id="timeline"></div></div>
+  </section>
+  <div class="toolbar" role="group" aria-label="Filter cards">
+    <button class="chip" id="f-all" aria-pressed="true" data-f="all">All</button>
+    <button class="chip" id="f-late" aria-pressed="false" data-f="late">Overdue or due to start</button>
+    <button class="chip" id="f-blocked" aria-pressed="false" data-f="blocked">Blocked</button>
+  </div>
+  <div class="tabs" id="tabs" role="tablist" aria-label="Parts of the plan" hidden></div>
+  <div class="board-scroll" id="board-panel"><div class="lanes" id="board"></div></div>
+</div>
+<aside class="drawer" id="drawer" hidden aria-label="Activity detail"></aside>
+<script type="application/json" id="board-data">{{BOARD_DATA_JSON}}</script>
+<script>
+(function () {
+  var data = JSON.parse(document.getElementById("board-data").textContent);
+  var STATES = [
+    { key: "pending", label: "Pending", color: "var(--pending)" },
+    { key: "in_progress", label: "In progress", color: "var(--in-progress)" },
+    { key: "paused", label: "Paused", color: "var(--hold)" },
+    { key: "completed", label: "Completed", color: "var(--done)" },
+    { key: "cancelled", label: "Cancelled", color: "var(--cancelled)" }
+  ];
+  var STATE = {}; STATES.forEach(function (s) { STATE[s.key] = s; });
+  var byId = {}; data.activities.forEach(function (a) { byId[a.id] = a; });
+  var observed = new Date(data.observed_at);
+  var filter = "all", selected = null, cancelledOpen = false;
+  // The open tab is a part's record id, or "all". board_page.py chooses the tab the page opens on.
+  var tabbed = data.rows.length >= 2, tab = tabbed ? data.open_row : "all";
+  // The heading column is named by what the rows are, and the state columns by what the cards are.
+  function kinds(ids) { var k = {}; ids.forEach(function (id) { k[byId[id].kind] = true; }); return Object.keys(k); }
+  var rk = kinds(data.rows.map(function (r) { return r.activity; }));
+  var rowKind = rk.length === 1 && rk[0] === "plan" ? "Plan" : rk.length === 1 && rk[0] === "task" ? "Task" : "Plan or task";
+  var cardIds = [].concat.apply([], data.rows.map(function (r) { return r.cards; }));
+  var ck = kinds(cardIds);
+  var cardGroup = ck.length === 1 && ck[0] === "task" ? "Tasks by state" : "Activities by state";
+
+  // A task's kind is shown as its type, so a deliverable or a blocker card reads as one.
+  function kindOf(a) { return a.kind === "task" && a.task_type && a.task_type !== "work" ? a.task_type : a.kind; }
+  function kindTag(a) { return '<span class="kind ' + esc(kindOf(a)) + '">' + esc(kindOf(a)) + "</span>"; }
+  function named(a) { return (a.index ? '<span class="ix">' + esc(a.index) + "</span>" : "") + esc(a.title); }
+  function esc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+  // Every date and time on the page is in UK time, wherever the page is opened, as OKB shows them.
+  function day(iso) { return iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Europe/London" }) : ""; }
+  function full(iso) { return iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }) : ""; }
+  function span(a) {
+    if (a.start && a.finish) return day(a.start) + " to " + day(a.finish);
+    if (a.finish) return "by " + day(a.finish);
+    if (a.start) return "from " + day(a.start);
+    return "No dates";
+  }
+  function range(from, to) {
+    if (!from && !to) return "No dates";
+    return (from ? full(from) : "No start") + " to " + (to ? full(to) : "no finish");
+  }
+  function late(a) { return a.overdue_seconds > 0; }
+  function blank(v) { return !String(v || "").trim(); }
+  function unfinished(a) { return a.state !== "completed" && a.state !== "cancelled"; }
+  function variance(sec) {
+    var d = Math.round(Math.abs(sec) / 864e2);
+    return d === 0 ? "Finished on the day" : "Finished " + d + (d === 1 ? " day " : " days ") + (sec > 0 ? "late" : "early");
+  }
+  function evidenceList(a) {
+    if (a.evidence === null) return '<div class="note">Unknown: the database gives no evidence for it</div>';
+    if (!a.evidence.length) return '<div class="note">None linked</div>';
+    return '<ul class="plain">' + a.evidence.map(function (e) {
+      return "<li>" + esc(e.title) + (e.standing ? " (" + esc(e.standing) + ")" : "") + (e.deleted ? ", deleted" : "") + "</li>";
+    }).join("") + "</ul>";
+  }
+  function checklist(a) {
+    var n = a.evidence ? a.evidence.length : 0;
+    var rows = [
+      blank(a.completion_requirements) ? ["missing", "Missing", "Deliverables: none written"] : ["done", "Done", "Deliverables written"],
+      a.blockers.length ? ["missing", "Missing", a.blockers.length + (a.blockers.length === 1 ? " open blocker" : " open blockers")] : ["done", "Done", "No open blockers"],
+      a.evidence === null ? ["unknown", "Unknown", "Supporting evidence: the database gives no evidence for it"]
+        : n ? ["done", "Done", "Supporting evidence: " + n + " linked"] : ["missing", "Missing", "Supporting evidence: none linked"],
+      blank(a.completion_note) ? ["later", "At completion", "Completion note: written when it is completed"] : ["done", "Done", "Completion note: " + a.completion_note]
+    ];
+    return '<ul class="checklist">' + rows.map(function (r) { return '<li><span class="mark ' + r[0] + '">' + r[1] + "</span><span>" + esc(r[2]) + "</span></li>"; }).join("") + "</ul>";
+  }
+  function badges(a) {
+    var out = [];
+    if (late(a)) out.push('<span class="badge late">Overdue ' + Math.round(a.overdue_seconds / 3600) + " h</span>");
+    if (a.due_to_start) out.push('<span class="badge due">Due to start</span>');
+    if (a.blockers.length) out.push('<span class="badge blocked">Blocked ' + a.blockers.length + "</span>");
+    if (blank(a.completion_requirements) && !a.deliverables_wanted && (a.state === "in_progress" || a.state === "paused")) out.push('<span class="badge nodeliv">No deliverables</span>');
+    if (a.deliverables_wanted) out.push('<span class="badge deliv">Deliverables ' + a.deliverables_done + " of " + a.deliverables_wanted + " done</span>");
+    a.dependencies.forEach(function (d) { if (d.waiting) out.push('<span class="badge dep" title="After ' + esc(d.title) + '">After ' + esc(d.title) + "</span>"); });
+    return out.join("");
+  }
+  function matches(a) {
+    if (filter === "late") return late(a) || a.due_to_start;
+    if (filter === "blocked") return a.blockers.length > 0;
+    return true;
+  }
+
+  function renderHeader() {
+    var p = data.plan;
+    document.getElementById("plan-title").textContent = p.title;
+    document.getElementById("plan-meta").textContent = "Plan · " + span(p);
+    document.getElementById("purpose-text").textContent = data.purpose;
+    var readAt = document.getElementById("read-at");
+    readAt.innerHTML = "<b>" + esc(full(data.observed_at)) + "</b>";
+    readAt.title = "Save number " + data.cutoff;
+  }
+
+  function renderTimeline() {
+    var p = data.plan, dated = data.rows.map(function (r) { return byId[r.activity]; }).filter(function (a) { return a.start && a.finish; });
+    var from = p.start ? new Date(p.start) : null, to = p.finish ? new Date(p.finish) : null;
+    dated.forEach(function (a) {
+      var s = new Date(a.start), f = new Date(a.finish);
+      if (!from || s < from) from = s;
+      if (!to || f > to) to = f;
+    });
+    var el = document.getElementById("timeline");
+    if (!from || !to || to <= from) { el.innerHTML = '<div class="note">No row has both a start and a finish date.</div>'; el.style.height = "auto"; return; }
+    var total = to - from, pct = function (d) { return Math.max(0, Math.min(100, (d - from) / total * 100)); };
+    var html = "", step = Math.max(1, Math.round(total / 864e5 / 6)) * 864e5;
+    for (var t = from.getTime(); t <= to.getTime(); t += step) {
+      html += '<div class="tl-tickline" style="left:' + pct(t) + '%"></div><div class="tl-tick" style="left:' + pct(t) + '%">' + esc(day(new Date(t).toISOString())) + "</div>";
+    }
+    dated.forEach(function (a, i) {
+      var cls = late(a) ? "late" : a.due_to_start ? "due" : a.state === "completed" ? "done" : "";
+      var left = pct(new Date(a.start)), width = pct(new Date(a.finish)) - left;
+      html += '<div class="tl-bar ' + cls + '" tabindex="0" role="button" data-id="' + esc(a.id) + '" title="' + esc((a.index ? a.index + " " : "") + a.title + ": " + span(a)) + '" style="left:calc(' + left + '% + 1px);width:calc(' + width + '% - 2px)">' + esc(a.index || i + 1) + "</div>";
+    });
+    if (observed >= from && observed <= to) html += '<div class="tl-now" style="left:' + pct(observed) + '%"><span>' + esc(day(data.observed_at)) + "</span></div>";
+    el.innerHTML = html;
+  }
+
+  function card(a) {
+    return '<button class="card' + (late(a) ? " is-late" : "") + (selected === a.id ? " selected" : "") + '" data-id="' + esc(a.id) + '">' +
+      kindTag(a) + '<span class="card-title">' + named(a) + '</span>' +
+      '<span class="dates">' + esc(span(a)) + "</span>" + (badges(a) ? '<span class="badges">' + badges(a) + "</span>" : "") + "</button>";
+  }
+
+  function renderTabs() {
+    var el = document.getElementById("tabs");
+    if (!tabbed) return;
+    el.hidden = false;
+    var panel = document.getElementById("board-panel");
+    panel.setAttribute("role", "tabpanel");
+    el.innerHTML = data.rows.map(function (r) { return byId[r.activity]; }).concat([null]).map(function (a, i) {
+      var id = a ? a.id : "all", on = tab === id;
+      // The board is labelled by the open tab.
+      if (on) panel.setAttribute("aria-labelledby", "tab-" + i);
+      return '<button class="tab' + (a && a.state === "cancelled" ? " cancelled" : "") + '" id="tab-' + i + '" role="tab" aria-controls="board-panel" aria-selected="' + on + '" tabindex="' + (on ? 0 : -1) + '" data-tab="' + esc(id) + '">' + (a ? named(a) : "All") + "</button>";
+    }).join("");
+  }
+  function openTab(id, focus) {
+    tab = id; renderTabs(); renderBoard(); fitBoard();
+    if (focus) document.querySelector('.tab[aria-selected="true"]').focus();
+  }
+
+  function renderBoard() {
+    var cols = STATES.filter(function (s) { return s.key !== "cancelled" || cancelledOpen; });
+    var shown = data.rows.filter(function (r) { return tab === "all" || r.activity === tab; });
+    // Each state column counts the cards of the rows the open tab shows.
+    var cardCounts = {}; shown.forEach(function (r) { r.cards.forEach(function (id) { var s = byId[id].state; cardCounts[s] = (cardCounts[s] || 0) + 1; }); });
+    var rows = shown.filter(function (r) { return matches(byId[r.activity]) || r.cards.some(function (id) { return matches(byId[id]); }); });
+    var el = document.getElementById("board");
+    el.style.gridTemplateColumns = "200px repeat(" + cols.length + ", minmax(200px, 1fr))" + (cancelledOpen ? "" : " 40px");
+    var html = '<div class="corner"></div><div class="group-head" style="grid-column: 2 / span ' + cols.length + '">' + cardGroup + "</div>" +
+      '<div class="col-head">' + rowKind + "</div>" + cols.map(function (s) {
+      return '<div class="col-head"><span class="dot" style="background:' + s.color + '"></span>' + s.label + '<span class="n">' + (cardCounts[s.key] || 0) + "</span></div>";
+    }).join("");
+    if (!cancelledOpen) html += '<button class="fold" id="open-cancelled" aria-label="Show cancelled" style="grid-column: ' + (cols.length + 2) + '; grid-row: 1 / span ' + (rows.length + 2) + '"><div class="col-head"><span class="dot" style="background:var(--cancelled)"></span>Cancelled<span class="n">' + (cardCounts.cancelled || 0) + "</span></div></button>";
+    html += rows.map(function (r) {
+      var a = byId[r.activity];
+      return '<div class="lane' + (late(a) ? " late" : "") + '"><div class="lane-head' + (selected === a.id ? " selected" : "") + '" tabindex="0" role="button" data-id="' + esc(a.id) + '">' + kindTag(a) + '<span class="name">' + named(a) + '</span><span class="dates">' + esc(span(a)) + "</span>" +
+        '<span class="badges"><span class="state-pill"><span class="dot" style="background:' + STATE[a.state].color + '"></span>' + STATE[a.state].label + "</span>" + badges(a) + "</span></div>" +
+        cols.map(function (s) {
+          return '<div class="cell">' + r.cards.filter(function (id) { var c = byId[id]; return c.state === s.key && matches(c); }).map(function (id) { return card(byId[id]); }).join("") + "</div>";
+        }).join("") + "</div>";
+    }).join("");
+    if (!rows.length) html += '<div class="empty" style="grid-column: 1 / -1">' + (data.rows.length ? "No card matches this filter." : "The plan has nothing under it yet.") + "</div>";
+    el.innerHTML = html;
+    // The column headings stick directly below the group heading.
+    el.style.setProperty("--group-h", el.querySelector(".group-head").offsetHeight + "px");
+  }
+
+  function openDrawer(id) {
+    selected = id;
+    var a = byId[id], st = STATE[a.state], d = document.getElementById("drawer");
+    var deps = a.dependencies.length ? a.dependencies.map(function (x) { return esc(x.title) + " (" + esc(STATE[x.state] ? STATE[x.state].label.toLowerCase() : x.state) + ")"; }).join("<br>") : "Nothing";
+    var blockers = a.blockers.length ? a.blockers.map(function (b) {
+      return b.name ? esc(b.name) + " (" + esc(STATE[b.state] ? STATE[b.state].label.toLowerCase() : b.state) + ")" : esc(b.description);
+    }).join("<br>") : "None";
+    var asks = a.next_states.map(function (s, i) {
+      return '<code id="ask-' + i + '">@agent-real-agent:database-operator move record ' + esc(a.id) + " to " + esc(STATE[s].label.toLowerCase()) + '</code><button class="copy" data-copy="ask-' + i + '">Copy</button>';
+    }).join("");
+    d.innerHTML = '<div class="drawer-head"><div>' + kindTag(a) + "<h3>" + named(a) + '</h3></div><button class="close" id="close" aria-label="Close">×</button></div>' +
+      '<div class="badges"><span class="state-pill"><span class="dot" style="background:' + st.color + '"></span>' + st.label + "</span>" + badges(a) + "</div>" +
+      (a.description ? '<div class="note">' + esc(a.description) + "</div>" : "") +
+      '<div><p class="section-label">Deliverables</p>' + (a.deliverables.length ? '<ul class="plain">' + a.deliverables.map(function (x) {
+        return "<li>" + esc(x.title) + " (" + esc(STATE[x.state] ? STATE[x.state].label.toLowerCase() : x.state) + ")</li>"; }).join("") + "</ul>" : "") +
+      (blank(a.completion_requirements) ? (a.deliverables.length ? "" : '<div class="note">None written</div>') : '<div class="note">' + esc(a.completion_requirements) + "</div>") + "</div>" +
+      "<dl><dt>Baseline</dt><dd>" + esc(range(a.baseline_start_at, a.baseline_finish_at)) + "</dd>" +
+      "<dt>Forecast</dt><dd>" + esc(range(a.forecast_start_at, a.forecast_finish_at)) + "</dd>" +
+      "<dt>Recorded start</dt><dd>" + esc(a.started_at ? full(a.started_at) : "Not started") + "</dd>" +
+      "<dt>Recorded finish</dt><dd>" + esc(a.actual_finish ? full(a.actual_finish) : "Not finished") + "</dd>" +
+      (a.state === "completed" && a.baseline_finish_variance_seconds != null ? "<dt>Against baseline</dt><dd>" + esc(variance(a.baseline_finish_variance_seconds)) + "</dd>" : "") +
+      (a.state === "completed" && a.forecast_finish_variance_seconds != null ? "<dt>Against forecast</dt><dd>" + esc(variance(a.forecast_finish_variance_seconds)) + "</dd>" : "") +
+      (a.prior_state && a.prior_state !== a.state ? "<dt>Previous state</dt><dd>" + esc(STATE[a.prior_state] ? STATE[a.prior_state].label : a.prior_state) + "</dd>" : "") +
+      "<dt>Depends on</dt><dd>" + deps + "</dd><dt>Blockers</dt><dd>" + blockers + "</dd>" +
+      "<dt>Part of</dt><dd>" + esc(a.parent_title || "Nothing") + "</dd>" + "<dt>Owner</dt><dd>" + esc(a.owner || "No owner named") + "</dd>" +
+      (a.kind !== "plan" ? "<dt>Assigned to</dt><dd>" + esc(a.assignee || "Not assigned") + "</dd>" : "") +
+      '<dt>Record id</dt><dd class="record-id"><code id="record-id">' + esc(a.id) + '</code><button class="copy" data-copy="record-id">Copy</button></dd></dl>' +
+      (a.external_references.length ? '<div><p class="section-label">References</p><ul class="plain">' + a.external_references.map(function (r) { return "<li>" + esc(r.label) + (r.label && r.reference ? ": " : "") + esc(r.reference) + "</li>"; }).join("") + "</ul></div>" : "") +
+      (a.state === "completed" ? '<div><p class="section-label">Completion note</p><div class="note">' + esc(a.completion_note) + '</div></div><div><p class="section-label">Supporting evidence</p>' + evidenceList(a) + "</div>"
+        : unfinished(a) ? '<div><p class="section-label">Ready to complete?</p>' + checklist(a) + "</div>" +
+          (a.evidence && a.evidence.length ? '<div><p class="section-label">Supporting evidence</p>' + evidenceList(a) + "</div>" : "") : "") +
+      '<div><p class="section-label">Latest version</p><div class="note">Version ' + esc(a.latest.version_number) + ", save " + esc(a.latest.change_no) + ", " + esc(full(a.latest.recorded_at)) + (a.latest.reason ? ": " + esc(a.latest.reason) : "") + "</div></div>" +
+      (asks ? '<div class="ask"><div>To change its state, ask the database operator:</div>' + asks + "</div>" : '<div class="note">A cancelled activity stays cancelled.</div>');
+    d.hidden = false;
+    renderBoard();
+    document.getElementById("close").focus();
+  }
+  function closeDrawer() {
+    var back = selected; selected = null;
+    document.getElementById("drawer").hidden = true;
+    renderBoard();
+    var el = document.querySelector('.card[data-id="' + back + '"], .lane-head[data-id="' + back + '"]'); if (el) el.focus();
+  }
+
+  document.addEventListener("click", function (e) {
+    var t = e.target.closest("[data-id], [data-tab], #close, #open-cancelled, [data-copy], .chip");
+    if (!t) return;
+    if (t.dataset.tab) return openTab(t.dataset.tab);
+    // A part's bar in the timetable opens its tab, then its panel.
+    if (t.classList.contains("tl-bar") && tabbed) openTab(t.dataset.id);
+    if (t.id === "close") return closeDrawer();
+    if (t.id === "open-cancelled") { cancelledOpen = true; return renderBoard(); }
+    if (t.dataset.copy) {
+      var code = document.getElementById(t.dataset.copy);
+      // Select and copy inside the click itself: a page opened in a frame or from a file often refuses navigator.clipboard.
+      var r = document.createRange(); r.selectNodeContents(code); var s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      var copied = false; try { copied = document.execCommand("copy"); } catch (err) {}
+      if (copied) { t.textContent = "Copied"; return; }
+      t.textContent = "Selected";
+      try { navigator.clipboard.writeText(code.textContent).then(function () { t.textContent = "Copied"; }, function () {}); } catch (err) {}
+      return;
+    }
+    if (t.classList.contains("chip")) {
+      filter = t.dataset.f;
+      document.querySelectorAll(".chip").forEach(function (c) { c.setAttribute("aria-pressed", String(c === t)); });
+      return renderBoard();
+    }
+    openDrawer(t.dataset.id);
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && selected) closeDrawer();
+    if ((e.key === "Enter" || e.key === " ") && e.target.classList && (e.target.classList.contains("tl-bar") || e.target.classList.contains("lane-head"))) {
+      e.preventDefault();
+      if (e.target.classList.contains("tl-bar") && tabbed) openTab(e.target.dataset.id);
+      openDrawer(e.target.dataset.id);
+    }
+    // The arrow keys, Home and End move between the tabs, and open the tab they move to.
+    if (e.target.classList && e.target.classList.contains("tab")) {
+      var ids = [].map.call(document.querySelectorAll(".tab"), function (b) { return b.dataset.tab; }), i = ids.indexOf(e.target.dataset.tab);
+      var to = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: ids.length - 1 }[e.key];
+      if (to !== undefined) { e.preventDefault(); openTab(ids[(to + ids.length) % ids.length], true); }
+    }
+  });
+  // The board fills the window below its top edge, so its scrollbars are on screen with the page at the top.
+  function fitBoard() {
+    var sc = document.querySelector(".board-scroll");
+    sc.style.maxHeight = Math.max(320, window.innerHeight - (sc.getBoundingClientRect().top + window.scrollY) - parseFloat(getComputedStyle(document.querySelector(".wrap")).paddingBottom)) + "px";
+  }
+  window.addEventListener("resize", fitBoard);
+  document.getElementById("purpose").addEventListener("toggle", fitBoard);
+  renderHeader(); renderTimeline(); renderTabs(); renderBoard(); fitBoard();
+})();
+</script>
+</body>
+</html>

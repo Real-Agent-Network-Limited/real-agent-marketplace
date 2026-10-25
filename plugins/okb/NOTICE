@@ -1,0 +1,20 @@
+okb plugin
+Third-party notices
+
+EdgeQuake
+Copyright 2024-2026 Raphaël MANSUY
+Licensed under the Apache License, Version 2.0. The licence is in LICENSES/Apache-2.0-EdgeQuake.txt.
+Source: https://github.com/raphaelmansuy/edgequake, commit da1831ceb4c79ad5c7d3a5ad385e8fec0b55389c.
+
+skills/records/SKILL.md, section 19, adapts EdgeQuake's entity extraction instructions, from
+edgequake/crates/edgequake-pipeline/src/prompts/entity_extraction.rs and
+edgequake/crates/edgequake-pipeline/src/prompts/parser/tuple_parser.rs. The changes: the entity
+types and relation names come from the firm's glossary classes and relationships, the output is the
+JSON okb_save_extraction takes, and the limits are OKB's.
+
+LightRAG
+Copyright (c) 2025 LightRAG Team
+Licensed under the MIT License. The licence is in LICENSES/MIT-LightRAG.txt.
+Source: https://github.com/HKUDS/LightRAG.
+
+EdgeQuake ported those instructions from LightRAG.

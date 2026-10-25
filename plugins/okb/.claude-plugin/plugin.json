@@ -1,0 +1,36 @@
+{
+  "name": "okb",
+  "description": "Lets each person work in their firm's organisational knowledge base (OKB), in the firm's own Supabase project, within their own permissions: records, files and their search, the glossary and data dictionary, boards, graphs and printed PDFs.",
+  "version": "0.6.0",
+  "author": {
+    "name": "Real Agent"
+  },
+  "license": "MIT",
+  "userConfig": {
+    "project_ref": {
+      "type": "string",
+      "title": "Project reference",
+      "description": "The client's Supabase project reference, under Project Settings → General in the Supabase dashboard. Used in a folder with no actor file; a folder signed in with okb sign-in --folder names its own project."
+    },
+    "auth_email": {
+      "type": "string",
+      "title": "Auth user's email",
+      "description": "The email address the person signs in with, in a folder with no actor file."
+    },
+    "agent_folder": {
+      "type": "string",
+      "title": "Agent folder",
+      "description": "The one folder the person puts files in for the agent, which uploads read from, and where the agent reads JSON for a call's arguments, writes a call's result, and draws and prints pages, in a folder with no actor file. Leave it empty to allow none of these."
+    },
+    "whisper_cli": {
+      "type": "string",
+      "title": "whisper.cpp program",
+      "description": "The full path of whisper.cpp's whisper-cli program, which transcribes recordings read from the agent folder. Leave it empty where Homebrew installed it."
+    },
+    "whisper_model": {
+      "type": "string",
+      "title": "whisper.cpp model",
+      "description": "The full path of whisper.cpp's ggml-base.bin model. Leave it empty where Homebrew installed it."
+    }
+  }
+}
