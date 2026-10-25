@@ -133,8 +133,9 @@ export async function ownerSignIn({ url: knownUrl, key, folder }, ask, say) {
   writeSession(ref, email, { projectRef: ref, url, publishableKey: key, email, refreshToken: session.body.refresh_token });
   writeActorFile(folder, { projectRef: ref, email });
   rmSync(codeFile, { force: true });
-  // Real Agent's one-time codes, for the business analyst's summary to give the owner, readable by the owner alone.
-  if (Array.isArray(made.real_agent_codes) && made.real_agent_codes.length) {
+  // Real Agent's one-time codes that okb-setup could not send to Real Agent, for the business analyst's summary to give
+  // the owner, readable by the owner alone. An empty list is saved too: every code reached Real Agent.
+  if (Array.isArray(made.real_agent_codes)) {
     const file = join(folder, REAL_AGENT_CODE_FILE);
     writeFileSync(file, `${JSON.stringify(made.real_agent_codes)}\n`, { mode: 0o600 });
     try { chmodSync(file, 0o600); } catch {}

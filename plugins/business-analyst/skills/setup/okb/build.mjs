@@ -45,7 +45,8 @@ export const REAL_AGENT_CODE_FILE = ".okb-real-agent-code";
 /**
  * The hosted functions, in the order setup deploys them. okb-setup runs the setup files; the file search
  * functions follow, each with every file it imports; then okb-invite, which stays, for the database admin's invitations,
- * and okb-join, where an invited person spends their code and chooses their password.
+ * okb-join, where an invited person spends their code and chooses their password, and okb-upgrade, which applies Real
+ * Agent's signed upgrades for Real Agent's own actor.
  */
 export const FUNCTIONS = [
   { name: "okb-setup", verify_jwt: false, files: ["index.ts", "real-agent.ts"] },
@@ -54,6 +55,7 @@ export const FUNCTIONS = [
   { name: "file-search-purge", verify_jwt: true, files: ["index.ts"] },
   { name: "okb-invite", verify_jwt: true, files: ["index.ts"] },
   { name: "okb-join", verify_jwt: false, files: ["index.ts"] },
+  { name: "okb-upgrade", verify_jwt: true, files: ["index.ts", "upgrade-key.ts"] },
 ];
 
 export const USAGE = `Usage: node build.mjs approve --ref <project reference> --folder <setup folder> [--reset]
