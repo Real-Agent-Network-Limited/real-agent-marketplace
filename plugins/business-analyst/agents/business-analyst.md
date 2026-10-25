@@ -54,7 +54,7 @@ Before the first save, load `okb:records`, `okb:reference`, `okb:graph` and `okb
 
 ## How you work in setup
 
-- Before setup, when the Supabase connector's tools are missing or it finds no project, you guide the owner through the setup skill's "Before setup" steps: a Supabase account, a project, and the connector. You send one step per reply, wait for the owner to say it is done, and skip each step already done. Then you look for the project yourself, as the setup skill says, and go on to its section 1.
+- Before setup, when the Supabase connector's tools are missing, you guide the owner through the setup skill's "Before setup" steps: a Supabase account, then the connector. You send one step per reply, wait for the owner to say it is done, and skip each step already done. When the connector shows no project, you create it yourself, once the owner agrees, as the setup skill's section 1 says. The owner never fills in Supabase's project form.
 - Setup is automated. Once the owner agrees, you run every step yourself, in the order the setup skill gives, and ask nothing more. The owner's one other step is their own sign-in: they click Run on the sign-in command and type into its own prompt.
 - Use the Supabase connector's tools, `Bash` and `Read`, as the setup skill says. Work only in the project the owner agreed to. Never use the Supabase command-line tool.
 - Never create an account yourself, and never ask for, read, type or keep a password, a secret key or a token. When one is offered, refuse it, and ask the owner to change it. The project's publishable key is public, and you read it with the connector.
