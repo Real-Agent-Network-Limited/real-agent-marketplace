@@ -12,12 +12,15 @@
 // POST .../okb-setup/owner, JSON { code, name, email, password }: the owner's first sign-in, which the okb command's
 // sign-in --owner sends. It goes on only when the code's SHA-256 is okb_setup.owner_code's, unexpired, and OKB has
 // no actor yet. It makes the owner's Auth user with the password they chose, confirmed, through Supabase Auth's own
-// admin API; an Auth user an earlier attempt made for the same email gets the new password instead. It makes an Auth
-// user for each of Real Agent's staff real-agent.ts lists, with a long random password nobody is told. It records
-// each in okb_setup.person, for first-administrator.sql, and spends the code. Response: { ok: true, email,
-// real_agent } or { ok: false, problem }. The password is never stored, logged or returned.
+// admin API; an Auth user an earlier attempt made for the same email gets the new password instead. It invites each of
+// Real Agent's staff real-agent.ts lists through Supabase Auth's invite, as okb-invite does, or reuses the Auth user
+// Auth holds for the email. An invitation Supabase does not send stops nothing: that person is left out. It records
+// each person in okb_setup.person, for first-administrator.sql, and each loose end in okb_setup.open_task, which
+// first-administrator.sql saves as an open task for the owner: Real Agent not added, when the staff list is empty or an
+// invitation was not sent, and the Developer invitation to DEVELOPER_EMAIL. It spends the code. Response: { ok: true,
+// email, real_agent, open_tasks } or { ok: false, problem }. The password is never stored, logged or returned.
 import postgres from "npm:postgres@3.4.9";
-import { STAFF } from "./real-agent.ts";
+import { DEVELOPER_EMAIL, STAFF } from "./real-agent.ts";
 
 const PROJECT = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -42,8 +45,41 @@ async function auth(method: string, path: string, body?: unknown): Promise<{ ok:
 }
 const authProblem = (body: Record<string, unknown>) => String(body.msg ?? body.message ?? body.error_description ?? body.error ?? "Supabase Auth refused it.");
 
-/** A password nobody is told: 32 random bytes as hex. */
-const unknownPassword = () => Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, "0")).join("");
+/** One of Real Agent's staff: the Auth user Auth holds for the email, or one Supabase invites, or why it was not sent. */
+// deno-lint-ignore no-explicit-any
+async function invited(db: any, email: string, name: string): Promise<{ id?: string; made?: boolean; problem?: string }> {
+  const [found] = await db`select id from auth.users where lower(email) = lower(${email})`;
+  if (found) return { id: found.id, made: false };
+  const res = await fetch(`${PROJECT}/auth/v1/invite`, {
+    method: "POST",
+    headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ email, data: { name } }),
+  }).catch(() => null);
+  const body = res ? await res.json().catch(() => ({})) : {};
+  if (!res?.ok || typeof body?.id !== "string") return { problem: res ? authProblem(body ?? {}) : "Supabase Auth could not be reached." };
+  return { id: body.id, made: true };
+}
+
+/** The open tasks setup leaves the owner, as first-administrator.sql saves them, titled as okb-invite finds them. */
+export function openTasks(staff: { name: string; email: string }[], missed: { name: string; email: string; problem: string }[], developer: string | null) {
+  const tasks: { title: string; description: string; completion_requirements: string }[] = [];
+  if (developer) tasks.push({
+    title: `Invite ${developer} as a Developer in Supabase`,
+    description: `In Supabase, open your organisation's Team page, choose Invite member, and invite ${developer} as a Developer, so Real Agent can apply updates. A Developer can change the database and read its keys, but not your billing, members or settings.`,
+    completion_requirements: "The administrator says the invitation is sent.",
+  });
+  if (!staff.length) tasks.push({
+    title: "Add Real Agent as a user",
+    description: "Real Agent's staff are not in your knowledge base yet. Ask your database admin to add Real Agent once Real Agent gives you its email address.",
+    completion_requirements: "An actor named \"<name> (Real Agent)\" is in the knowledge base.",
+  });
+  for (const m of missed) tasks.push({
+    title: `Add Real Agent (${m.email}) as a user`,
+    description: `Supabase did not send Real Agent's invitation to ${m.email} during setup: ${m.problem} Once ${developer ?? "Real Agent"} has accepted the Developer invitation, ask your database admin: add Real Agent, ${m.email}.`,
+    completion_requirements: `An actor named "${m.name} (Real Agent)" is in the knowledge base.`,
+  });
+  return tasks;
+}
 
 /** The Auth user for an email: made, or, when an earlier attempt made it, given this password. Returns its id. */
 // deno-lint-ignore no-explicit-any
@@ -90,23 +126,24 @@ async function owner(db: any, body: Record<string, unknown>): Promise<Response> 
   const you = await authUser(db, email, password, name);
   if (!you.id) return json(400, { ok: false, problem: `Supabase Auth refused your sign-in: ${you.problem}` });
   const people = [{ auth_user_id: you.id, name, email, role: "owner" }];
-  const made = you.made ? [you.id] : [];
+  const missed: { name: string; email: string; problem: string }[] = [];
   for (const one of STAFF) {
-    const staff = await authUser(db, one.email.toLowerCase(), unknownPassword(), one.name);
-    if (!staff.id) {
-      for (const id of made) await auth("DELETE", `users/${id}`);
-      return json(400, { ok: false, problem: `Supabase Auth refused Real Agent's sign-in for ${one.email}: ${staff.problem}` });
-    }
-    if (staff.made) made.push(staff.id);
-    people.push({ auth_user_id: staff.id, name: one.name, email: one.email.toLowerCase(), role: "real_agent" });
+    const address = one.email.toLowerCase();
+    const staff = await invited(db, address, `${one.name} (Real Agent)`);
+    if (!staff.id) { missed.push({ name: one.name, email: address, problem: `${staff.problem}`.replace(/([^.])$/, "$1.") }); continue; }
+    people.push({ auth_user_id: staff.id, name: one.name, email: address, role: "real_agent" });
   }
+  const tasks = openTasks(STAFF, missed, DEVELOPER_EMAIL);
   // deno-lint-ignore no-explicit-any
   await db.begin(async (tx: any) => {
     await tx`delete from okb_setup.person`;
     for (const p of people) await tx`insert into okb_setup.person(auth_user_id, name, email, role) values (${p.auth_user_id}, ${p.name}, ${p.email}, ${p.role})`;
+    await tx`delete from okb_setup.open_task`;
+    for (const [i, t] of tasks.entries())
+      await tx`insert into okb_setup.open_task(position, title, description, completion_requirements) values (${i + 1}, ${t.title}, ${t.description}, ${t.completion_requirements})`;
     await tx`delete from okb_setup.owner_code`;
   });
-  return json(200, { ok: true, email, real_agent: STAFF.map(s => s.name) });
+  return json(200, { ok: true, email, real_agent: people.filter(p => p.role === "real_agent").map(p => p.name), open_tasks: tasks.map(t => t.title) });
 }
 
 Deno.serve(async (req) => {

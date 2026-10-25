@@ -35,13 +35,14 @@ export const OWNER_CODE_FILE = ".okb-owner-code";
 
 /**
  * The hosted functions, in the order setup deploys them. okb-setup runs the setup files; the file search
- * functions follow, each with every file it imports.
+ * functions follow, each with every file it imports; then okb-invite, which stays, for the database admin's invitations.
  */
 export const FUNCTIONS = [
   { name: "okb-setup", verify_jwt: false, files: ["index.ts", "real-agent.ts"] },
   { name: "file-search-worker", verify_jwt: false, files: ["index.ts", "text.ts"] },
   { name: "file-search", verify_jwt: true, files: ["index.ts"] },
   { name: "file-search-purge", verify_jwt: true, files: ["index.ts"] },
+  { name: "okb-invite", verify_jwt: true, files: ["index.ts"] },
 ];
 
 export const USAGE = `Usage: node build.mjs approve --ref <project reference> --folder <setup folder> [--reset]
@@ -74,6 +75,7 @@ revoke all on schema okb_setup from public, anon, authenticated;
 create table if not exists okb_setup.approved (sha256 text primary key, name text not null, approved_at timestamptz not null default now());
 create table if not exists okb_setup.owner_code (sha256 text primary key, expires_at timestamptz not null);
 create table if not exists okb_setup.person (auth_user_id uuid primary key, name text not null, email text not null, role text not null check (role in ('owner', 'real_agent')));
+create table if not exists okb_setup.open_task (position int primary key, title text not null, description text not null, completion_requirements text not null);
 revoke all on all tables in schema okb_setup from public, anon, authenticated;
 delete from okb_setup.approved;
 insert into okb_setup.approved (sha256, name) values

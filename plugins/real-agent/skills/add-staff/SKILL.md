@@ -13,7 +13,7 @@ Each workflow plugin's releases are kept in a scope of their own, `plugins_<work
 
 Each person's access is written down in the **Administration** scope, which only the firm's administrators and Real Agent's staff read. Section 7 saves that access record.
 
-The database admin, `@real-agent:database-admin`, runs this skill with the firm's administrator. The administrator does each account step in the Supabase dashboard themselves. The agent never creates an account, and never asks for or handles a password or a key.
+The database admin, `@real-agent:database-admin`, runs this skill with the firm's administrator. It adds a person with one call to the okb plugin's `invite_person` tool, once the administrator has confirmed the person's name, email and role. The tool calls the `okb-invite` hosted function as the administrator. Supabase emails the person a link to choose their own password, and OKB makes their actor, their grants and the access record. The agent never asks for, sees or handles a password or a key. Only in human only mode does the administrator use the Supabase dashboard and the SQL Editor, in section 4.
 
 This skill sets the order, the wording and the checks. It uses the `okb:records` skill for every call, and its sections 1, 10, 14 and 16.
 
@@ -93,44 +93,45 @@ A workflow has two scopes. Its plugin scope, `plugins_<workflow>`, keeps the plu
 
 **AI guided:** the database admin gives the person the workflow's two scopes and Real Agent's grant, and waits for their approval.
 
-## 3. The person's own sign-in
+## 3. Invite the person
 
-A person already in OKB has a sign-in. For them, the agent finds their actor with `okb_get_sign_ins` and goes on to section 5. Every other person needs a sign-in of their own. The administrator makes it in the Supabase dashboard.
+One call adds the person: their sign-in, their actor and their grants. The `okb-invite` hosted function goes on only for an administrator, as OKB itself answers it. It invites the email through Supabase Auth, which emails the person a link to choose their password. An email that already has a sign-in keeps it, and gets no email.
+
+It makes their actor, with their own sessions scope. Real Agent's staff get the name "<name> (Real Agent)". It gives the access template's grants, or a workflow role's grants. It saves the access record in Administration, as the administrator.
+
+A workflow role gives the `basic` template's grants and the role's grants from the newest release of the workflow's `access.json`. It also gives read of `plugins_<workflow>` for a role `plugin_readers` names. A person already in OKB keeps their actor, and gets only the grants they lack.
+
+1. **Confirm the name, email and role.**
+   - **Person:** decides the person's name, their work email address, and their access template or workflow role.
+   - **Database admin agent:** asks for whatever the administrator has not given, one question at a time. For an access template, it reads `okb_get_access_templates` and names the template's grants in plain words. Real Agent is the `real_agent` template, and its name is the staff member's name, such as Support. It then asks once, in one line, such as "Shall I invite Sam Lee, sam@firm.example, as basic staff?"
+2. **Invite them.**
+   - **Person:** in their folder, runs `okb invite_person name="<name>" email=<email> template=<template>`, or `workflow=<workflow> role=<role>` in place of the template.
+   - **Database admin agent:** after the administrator's yes, calls `invite_person` once, with `name`, `email` and either `template` or `workflow` and `role`. It shows no command, SQL or code. With `sign_in` "invited", the reply is "I've invited <name>; they'll get an email to choose their password. Their role is ready." With `sign_in` "existing", it is "<name> already had a sign-in, so no email went out. Their role is ready." For Real Agent it adds nothing about open tasks: the tool completes setup's "Add Real Agent" task itself.
+3. **When it is refused.**
+   - **Person:** reads the problem the command prints.
+   - **Database admin agent:** gives the problem in one plain sentence, and what the administrator can do. OKB has kept nothing. Supabase's own email service writes only to members of the firm's Supabase organisation. Until the project has its own email server, an invitation to anyone else is refused. For Real Agent, that means the Developer invitation must be accepted first. For staff, the firm sets up an email server under the project's Authentication settings, as SMTP. It never offers the dashboard steps of section 4 instead.
+
+**AI guided:** the database admin gives the person the name, email and role it will invite, and waits for their approval.
+
+## 4. By hand, in human only mode
+
+The administrator may add a person without the agent. The database makes an actor by hand only from the SQL Editor, as the `postgres` login, with steps 3b and 3e of `bootstrap.sql`. That file is in the business analyst plugin's setup skill, in its `okb` folder. The database admin never gives these steps; it uses section 3.
 
 1. **Make the person's Auth user.**
-   - **Person:** in the Supabase dashboard, opens **Authentication**, then **Users**, then **Add user**, then **Create new user**. Types the person's email address and a first password from the firm's password manager, and ticks **Auto Confirm User**. Then opens the new user and copies its user ID.
-   - **Database admin agent:** gives the administrator these steps, and asks for the user ID once they are done. It never asks for the password. It never accepts one that is offered, and says so.
-2. **Give the person their first password.**
-   - **Person:** shares the first password with the person through the password manager, never by email or chat.
-   - **Database admin agent:** reminds the administrator of this. The person replaces the password at their first sign-in.
+   - **Person:** in the Supabase dashboard, opens **Authentication**, then **Users**, then **Add user**, then **Create new user**. Types the person's email address and a first password from the firm's password manager, and ticks **Auto Confirm User**. Then opens the new user and copies its user ID. Shares the first password through the password manager, never by email or chat.
+   - **Database admin agent:** none: it uses section 3.
+2. **Make the actor.**
+   - **Person:** copies steps 3b and 3e from `bootstrap.sql`. Replaces `<approving administrator actor id>` with their own actor id from `okb okb_get_actor`, `<person auth user id>` with the user ID, and `<person display name>` with the person's name. In the SQL Editor, with the role selector on `postgres`, runs step 3b. Puts the actor id it returns in place of `<person actor id>` in step 3e, and runs it.
+   - **Database admin agent:** none: it uses section 3.
+3. **Give the template.**
+   - **Person:** runs `okb okb_apply_access_template p_person=<actor id> p_template=basic`. Then follows section 5 for a workflow role, and section 7 for the access record.
+   - **Database admin agent:** none: it uses section 3.
 
-**AI guided:** the database admin gives the person the email address and user ID, and waits for their approval.
-
-## 4. The person's actor
-
-The database makes an actor only from the SQL Editor, as the `postgres` login, with steps 3b and 3e of `bootstrap.sql`. That file is in the business analyst plugin's setup skill, in its `okb` folder. Step 3b makes the person, and step 3e makes their sessions scope.
-
-OKB holds the access templates. The `basic` template gives General, Routines and Reference, and reading the Plugins scope, so their plugins update. Step 3f is one statement that gives a person a template. Signed in, the administrator gives it with `okb_apply_access_template` instead.
-
-1. **Fill in steps 3b and 3e.**
-   - **Person:** copies steps 3b and 3e from `bootstrap.sql`. Replaces `<approving administrator actor id>` with their own actor id from `okb okb_get_actor`. Replaces `<person auth user id>` with the user ID, and `<person display name>` with the person's name.
-   - **Database admin agent:** calls `okb_get_actor` for the administrator's actor id. Then gives the administrator the two steps with each placeholder filled in, ready to paste. It leaves `<person actor id>` for the next step.
-2. **Run them one at a time.**
-   - **Person:** in the SQL Editor, with the role selector on `postgres`, runs step 3b and copies the actor id it returns. Puts that id in place of `<person actor id>` in step 3e, and runs it.
-   - **Database admin agent:** asks for each step's result. When a step is refused, it gives OKB's message and what it means from the records skill's "Problems with moves, scopes and grants".
-3. **Check the actor.**
-   - **Person:** runs `okb okb_get_sign_ins`, and finds the person by email.
-   - **Database admin agent:** calls `okb_get_sign_ins`, and finds the person's `actor_id` by `email`. It shows their name, and that they have never signed in.
-4. **Read the basic template.**
-   - **Person:** runs `okb okb_get_access_templates`, and reads the `basic` template's grants.
-   - **Database admin agent:** calls `okb_get_access_templates`. It shows the `basic` template's grants in plain words. It names each scope, what the person may do there, and any limit to their own records.
-5. **Give the person the basic template.**
-   - **Person:** runs `okb okb_apply_access_template p_person=<actor id> p_template=basic`. In the SQL Editor, step 3f's one statement does the same, with `<template code>` replaced by `basic`.
-   - **Database admin agent:** once the administrator agrees, calls `okb_apply_access_template` with the person's `actor_id` as `p_person` and `basic` as `p_template`. The answer lists each grant it issued, and `already_held` counts those the person held. A second call issues nothing more.
-
-**AI guided:** the database admin gives the person the new actor and their basic grants, and waits for their approval.
+**AI guided:** none: in AI guided mode, the database admin uses section 3.
 
 ## 5. The role's grants
+
+Section 3 gives a new person their role. This section changes the role of someone already in the workflow, and is the human only route.
 
 1. **Read the person's grants.**
    - **Person:** runs `okb okb_get_authorisations p_executor_id=<actor id>`.
@@ -150,7 +151,7 @@ OKB holds the access templates. The `basic` template gives General, Routines and
 ## 6. The person signs in
 
 1. **Set up the person's folder.**
-   - **Person:** the member of staff runs Real Agent's install script on their own computer. The public marketplace's README gives it. It takes their email, the project's address and key, and `--new-password`. Without the script, they add Real Agent's public marketplace, install the `real-agent` plugin, and run `okb setup` the same way. The setup's last step is `okb sync`. It installs the firm's own release of its plugins, and adds the workflow's plugin to their copy when their role reads its plugin scope. They install it with the command `okb sync` gives.
+   - **Person:** the member of staff runs Real Agent's install script on their own computer. The public marketplace's README gives it. It takes their email, and the project's address and key. A person invited in section 3 has chosen their password from the invitation email. A person made by hand in section 4 adds `--new-password`, to replace their first password. Without the script, they add Real Agent's public marketplace, install the `real-agent` plugin, and run `okb setup` the same way. The setup's last step is `okb sync`. It installs the firm's own release of its plugins, and adds the workflow's plugin to their copy when their role reads its plugin scope. They install it with the command `okb sync` gives.
    - **Database admin agent:** gives the administrator the commands for the person, with their email address filled in. It leaves the project's publishable key for the person to paste.
 2. **Check what the person sees.**
    - **Person:** the member of staff, in their folder, runs `okb okb_get_authorisations` and `okb okb_find_records p_scope_id=<scope id>`, and sends both results to the administrator.
@@ -165,6 +166,8 @@ OKB holds the access templates. The `basic` template gives General, Routines and
 
 Each person's access is saved as evidence in the Administration scope. It names who was added, to which workflow and role, each grant given and why, and who approved it. Only the firm's administrators and Real Agent's staff read it.
 
+`okb-invite` saves the access record for each person section 3 adds, and gives its id as `access_record_id`. The database admin reads it back with `okb_show_record`, and saves none of its own for that person.
+
 1. **Save the access record.**
    - **Person:** runs `okb okb_add_record p_scope=administration p_kind=evidence p_title="Access for <person's name>: <role> in <workflow>" p_reason="Records the access given to <person's name>." p_fields='{"summary":"<who approved it> gave <person's name> the <role> role in the <workflow> workflow: <each grant, in plain words>.","source_reference":"okb_get_authorisations for <actor id>","source_date":"<today>","standing":"observed","limitations":"Written by the add-staff skill as the grants were given."}'`.
    - **Database admin agent:** writes the summary from what section 5 checked, by the writing skill, and shows it to the administrator. Once they agree, it calls `okb_add_record` with those values, and reads it back with `okb_show_record`. Signed in as the administrator, it needs no grant in Administration.
@@ -176,6 +179,7 @@ Each person's access is saved as evidence in the Administration scope. It names 
 
 ## When the person changes something
 
+- **Real Agent's staff:** section 3 with the `real_agent` template, once the administrator has accepted Real Agent as a Developer. The name is the staff member's own, such as Support, with the email Real Agent gives.
 - **Another role for someone already in the workflow:** run section 5 with the new role. The grants of the old role in the workflow's scope are revoked first.
 - **A person leaving the firm:** this skill adds people. Disable their actor with step 5 of `bootstrap.sql`, as the records skill's "Problems with moves, scopes and grants" names it, and revoke their grants.
 - **A role missing from access.json:** Real Agent adds it to the workflow's plugin and publishes a new release. Ask Real Agent with the `real-agent:support` skill.

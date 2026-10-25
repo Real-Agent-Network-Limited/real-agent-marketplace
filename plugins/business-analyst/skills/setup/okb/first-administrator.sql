@@ -4,7 +4,9 @@
 -- It does what bootstrap.sql's steps 1, 2, 3b, 3e and 3f do, filled in from okb_setup.person: the owner becomes
 -- the first administrator, with their sessions scope; the six scopes are made in their name; and each of Real Agent's
 -- staff becomes an actor named "<name> (Real Agent)", with their sessions scope and the real_agent template's grants,
--- each approved by the owner. One transaction: a failure keeps nothing.
+-- each approved by the owner. Then each loose end okb-setup listed in okb_setup.open_task, such as Real Agent not added
+-- or the Developer invitation, is saved as an open task in Administration, assigned to the owner, as the owner, in
+-- position order, each due a week on. One transaction: a failure keeps nothing.
 do $$
 declare
  o record;
@@ -62,4 +64,30 @@ begin
    perform okb_private.apply_access_template(admin_id, person_id, 'real_agent');
   end if;
  end loop;
+end $$;
+
+-- The open tasks, saved as the owner, as their own sign-in would save them.
+do $$
+declare
+ o record;
+ t jsonb;
+ tasks jsonb;
+ saved jsonb;
+begin
+ select p.auth_user_id, a.actor_id into o from okb_setup.person p join okb.actor a using (auth_user_id) where p.role = 'owner';
+ -- Read before the switch to authenticated, which cannot reach okb_setup.
+ select coalesce(jsonb_agg(to_jsonb(x) order by x.position), '[]'::jsonb) into tasks from okb_setup.open_task x;
+ perform set_config('request.jwt.claims', jsonb_build_object('sub', o.auth_user_id, 'role', 'authenticated')::text, true);
+ execute 'set local role authenticated';
+ for t in select x from jsonb_array_elements(tasks) x loop
+  saved := okb.okb_add_record('administration', 'activity', t->>'title', 'An open task setup left for the administrator.',
+   jsonb_build_object('activity_kind', 'task', 'description', t->>'description', 'completion_requirements', t->>'completion_requirements',
+    'assignee_actor_id', o.actor_id,
+    'baseline_finish_at', to_char((date_trunc('minute', now()) + interval '7 days' + (t->>'position')::int * interval '1 minute') at time zone 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"')));
+  if saved->>'record_id' is null then
+   raise exception 'The open task "%" was not saved: %', t->>'title', coalesce(saved->>'problem', saved::text) using errcode = '22023';
+  end if;
+ end loop;
+ execute 'reset role';
+ perform set_config('request.jwt.claims', '', true);
 end $$;
