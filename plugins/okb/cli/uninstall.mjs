@@ -8,7 +8,8 @@
 // marketplace okb sync made, okb-marketplace in the home folder and the copy Claude Code's settings name, with the
 // files beside it, the whisper folder the install script fills and the install script's files in the temporary
 // folder. It signs out each saved sign-in to a project one of the person's folders, the okb plugin's settings or a
-// copy names, and deletes its file; a sign-in whose sign-out fails stays. Without a working claude command, the
+// copy names, and deletes its file; a sign-in whose sign-out fails stays, unless the project's host no longer
+// resolves, as once the project is deleted, when only the file goes. Without a working claude command, the
 // plugins, the marketplace and their settings stay. It keeps each folder the okb plugin's settings name, and each
 // folder in the home folder or a folder in it that okb setup made: one holding an actor file, with any upload folder
 // an older setup named, or one whose .claude/settings.json names an agent of Real Agent's plugins or of a plugin from
@@ -70,7 +71,10 @@ export function terminalAsk() {
   };
 }
 
-/** Signs out one saved sign-in: refreshes it, then calls Supabase Auth's logout with the access token. Returns null, or the problem. */
+const GONE = Symbol("gone");
+
+/** Signs out one saved sign-in: refreshes it, then calls Supabase Auth's logout with the access token. Returns null,
+ * GONE when the project's host no longer resolves, or the problem. */
 async function signOut(file) {
   const saved = readJson(file);
   if (!saved?.url || !saved?.publishableKey || !saved?.refreshToken) return "the file holds no sign-in";
@@ -83,6 +87,8 @@ async function signOut(file) {
     });
     return response.ok ? null : `the project answered HTTP ${response.status}`;
   } catch (err) {
+    // A deleted project's host no longer resolves, and never will again. A timeout or a refused connection may pass.
+    if (err?.cause?.code === "ENOTFOUND") return GONE;
     return `the project could not be reached: ${err?.cause?.code ?? err?.message ?? err}`;
   }
 }
@@ -265,6 +271,12 @@ export async function uninstall(argv, {
 
   for (const one of s.signIns) {
     const why = await signOut(one.file);
+    if (why === GONE) {
+      rmSync(one.file, { force: true });
+      try { rmdirSync(dirname(one.file)); } catch {}
+      say(`Project ${one.ref} no longer exists, so only the local sign-in of ${one.email} was removed: ${one.file}.`);
+      continue;
+    }
     if (why) { problem(`The sign-out of ${one.email} failed: ${why}. The sign-in stays in ${one.file}. Run this again once the project can be reached.`); continue; }
     say(`Signed out ${one.email} from project ${one.ref}.`);
     rmSync(one.file, { force: true });
