@@ -3,10 +3,13 @@
 -- okb-setup or the SQL Editor, after the owner has signed in. It holds no name, email or id of its own.
 -- It does what bootstrap.sql's steps 1, 2, 3b, 3e and 3f do, filled in from okb_setup.person: the owner becomes
 -- the first administrator, with their sessions scope; the six scopes are made in their name; and each of Real Agent's
--- staff becomes an actor named "<name> (Real Agent)", with their sessions scope and the real_agent template's grants,
--- each approved by the owner. Then each loose end okb-setup listed in okb_setup.open_task, such as Real Agent not added
--- or the Developer invitation, is saved as an open task in Administration, assigned to the owner, as the owner, in
--- position order, each due a week on. One transaction: a failure keeps nothing.
+-- staff with an Auth user becomes an actor named "<name> (Real Agent)", with their sessions scope and the real_agent
+-- template's grants, each approved by the owner. Each of Real Agent's staff okb-setup made a code for, in
+-- okb_setup.staff_code, becomes the same actor with no sign-in yet, with okb_private.provision_invited_actor, and the
+-- template's grants, and their code's SHA-256 becomes their open invitation in okb_private.invitation, which okb-join
+-- spends; okb-join makes their sessions scope. Then each loose end okb-setup listed in okb_setup.open_task, such as
+-- sending Real Agent its code or the Developer invitation, is saved as an open task in Administration, assigned to the
+-- owner, as the owner, in position order, each due a week on. One transaction: a failure keeps nothing.
 do $$
 declare
  o record;
@@ -63,6 +66,14 @@ begin
   if p.role = 'real_agent' then
    perform okb_private.apply_access_template(admin_id, person_id, 'real_agent');
   end if;
+ end loop;
+
+ -- Real Agent's staff with a one-time code: the actor, the template's grants and the open invitation.
+ for p in select * from okb_setup.staff_code order by name, email loop
+  person_id := okb_private.provision_invited_actor(admin_id, p.name || ' (Real Agent)', 'restricted');
+  perform okb_private.apply_access_template(admin_id, person_id, 'real_agent');
+  insert into okb_private.invitation(actor_id, email, code_sha256, invited_by_actor_id, expires_at)
+  values (person_id, p.email, p.code_sha256, admin_id, p.expires_at);
  end loop;
 end $$;
 

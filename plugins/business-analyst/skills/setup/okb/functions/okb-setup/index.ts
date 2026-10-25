@@ -12,13 +12,17 @@
 // POST .../okb-setup/owner, JSON { code, name, email, password }: the owner's first sign-in, which the okb command's
 // sign-in --owner sends. It goes on only when the code's SHA-256 is okb_setup.owner_code's, unexpired, and OKB has
 // no actor yet. It makes the owner's Auth user with the password they chose, confirmed, through Supabase Auth's own
-// admin API; an Auth user an earlier attempt made for the same email gets the new password instead. It invites each of
-// Real Agent's staff real-agent.ts lists through Supabase Auth's invite, as okb-invite does, or reuses the Auth user
-// Auth holds for the email. An invitation Supabase does not send stops nothing: that person is left out. It records
-// each person in okb_setup.person, for first-administrator.sql, and each loose end in okb_setup.open_task, which
-// first-administrator.sql saves as an open task for the owner: Real Agent not added, when the staff list is empty or an
-// invitation was not sent, and the Developer invitation to DEVELOPER_EMAIL. It spends the code. Response: { ok: true,
-// email, real_agent, open_tasks } or { ok: false, problem }. The password is never stored, logged or returned.
+// admin API; an Auth user an earlier attempt made for the same email gets the new password instead. For each of Real
+// Agent's staff real-agent.ts lists, it reuses the Auth user Auth holds for the email, or else makes a one-time
+// invitation code, as okb-invite makes one: three groups of four from an alphabet with no look-alike letters or digits,
+// valid for 7 days. It sends no email. It records each person with an Auth user in okb_setup.person, and each code's
+// SHA-256 alone in okb_setup.staff_code, for first-administrator.sql, which makes the actors and the invitations okb-join
+// spends. It records each loose end in okb_setup.open_task, which first-administrator.sql saves as an open task for the
+// owner: the Developer invitation to DEVELOPER_EMAIL, "Send Real Agent its invitation code" for each code, and "Add
+// Real Agent as a user" when the staff list is empty. It spends the sign-in code. Response: { ok: true, email,
+// real_agent, real_agent_codes: [{ name, email, code, expires_at }], open_tasks } or { ok: false, problem }. Each code is
+// in this answer once, and the sign-in saves it for the business analyst's summary. The password is never stored,
+// logged or returned.
 import postgres from "npm:postgres@3.4.9";
 import { DEVELOPER_EMAIL, STAFF } from "./real-agent.ts";
 
@@ -45,23 +49,19 @@ async function auth(method: string, path: string, body?: unknown): Promise<{ ok:
 }
 const authProblem = (body: Record<string, unknown>) => String(body.msg ?? body.message ?? body.error_description ?? body.error ?? "Supabase Auth refused it.");
 
-/** One of Real Agent's staff: the Auth user Auth holds for the email, or one Supabase invites, or why it was not sent. */
-// deno-lint-ignore no-explicit-any
-async function invited(db: any, email: string, name: string): Promise<{ id?: string; made?: boolean; problem?: string }> {
-  const [found] = await db`select id from auth.users where lower(email) = lower(${email})`;
-  if (found) return { id: found.id, made: false };
-  const res = await fetch(`${PROJECT}/auth/v1/invite`, {
-    method: "POST",
-    headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ email, data: { name } }),
-  }).catch(() => null);
-  const body = res ? await res.json().catch(() => ({})) : {};
-  if (!res?.ok || typeof body?.id !== "string") return { problem: res ? authProblem(body ?? {}) : "Supabase Auth could not be reached." };
-  return { id: body.id, made: true };
+// The code's letters and digits: no 0, 1, I, L, O or U, as okb-invite draws them.
+const ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789";
+/** A new invitation code, such as K7QM-3XRD-W9PA, as okb-invite makes one. */
+function newCode(): string {
+  const out: string[] = [];
+  while (out.length < 12) for (const b of crypto.getRandomValues(new Uint8Array(32))) if (b < 240 && out.length < 12) out.push(ALPHABET[b % 30]);
+  return [0, 4, 8].map(i => out.slice(i, i + 4).join("")).join("-");
 }
+/** The code's SHA-256 as okb-join compares it: upper case, without spaces or hyphens. */
+const codeHash = (code: string) => sha256(new TextEncoder().encode(code.toUpperCase().replace(/[\s-]+/g, "")));
 
-/** The open tasks setup leaves the owner, as first-administrator.sql saves them, titled as okb-invite finds them. */
-export function openTasks(staff: { name: string; email: string }[], missed: { name: string; email: string; problem: string }[], developer: string | null) {
+/** The open tasks setup leaves the owner, as first-administrator.sql saves them, titled as okb-invite and the database admin find them. */
+export function openTasks(staff: { name: string; email: string }[], coded: { name: string; email: string; expires_at: string }[], developer: string | null) {
   const tasks: { title: string; description: string; completion_requirements: string }[] = [];
   if (developer) tasks.push({
     title: `Invite ${developer} as a Developer in Supabase`,
@@ -73,10 +73,10 @@ export function openTasks(staff: { name: string; email: string }[], missed: { na
     description: "Real Agent's staff are not in your knowledge base yet. Ask your database admin to add Real Agent once Real Agent gives you its email address.",
     completion_requirements: "An actor named \"<name> (Real Agent)\" is in the knowledge base.",
   });
-  for (const m of missed) tasks.push({
-    title: `Add Real Agent (${m.email}) as a user`,
-    description: `Supabase did not send Real Agent's invitation to ${m.email} during setup: ${m.problem} Once ${developer ?? "Real Agent"} has accepted the Developer invitation, ask your database admin: add Real Agent, ${m.email}.`,
-    completion_requirements: `An actor named "${m.name} (Real Agent)" is in the knowledge base.`,
+  for (const c of coded) tasks.push({
+    title: `Send Real Agent its invitation code (${c.email})`,
+    description: `Setup made Real Agent's account, ${c.name} (Real Agent), with a one-time invitation code. Email the code to ${c.email}. It works once, until ${c.expires_at.slice(0, 10)}. If the code is lost or runs out, ask your database admin: add Real Agent, ${c.email}.`,
+    completion_requirements: `${c.name} (Real Agent) has signed in with the code.`,
   });
   return tasks;
 }
@@ -126,24 +126,28 @@ async function owner(db: any, body: Record<string, unknown>): Promise<Response> 
   const you = await authUser(db, email, password, name);
   if (!you.id) return json(400, { ok: false, problem: `Supabase Auth refused your sign-in: ${you.problem}` });
   const people = [{ auth_user_id: you.id, name, email, role: "owner" }];
-  const missed: { name: string; email: string; problem: string }[] = [];
+  const coded: { name: string; email: string; code: string; sha256: string; expires_at: string }[] = [];
   for (const one of STAFF) {
     const address = one.email.toLowerCase();
-    const staff = await invited(db, address, `${one.name} (Real Agent)`);
-    if (!staff.id) { missed.push({ name: one.name, email: address, problem: `${staff.problem}`.replace(/([^.])$/, "$1.") }); continue; }
-    people.push({ auth_user_id: staff.id, name: one.name, email: address, role: "real_agent" });
+    const [found] = await db`select id from auth.users where lower(email) = ${address}`;
+    if (found) { people.push({ auth_user_id: found.id, name: one.name, email: address, role: "real_agent" }); continue; }
+    const code = newCode();
+    coded.push({ name: one.name, email: address, code, sha256: await codeHash(code), expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString() });
   }
-  const tasks = openTasks(STAFF, missed, DEVELOPER_EMAIL);
+  const tasks = openTasks(STAFF, coded, DEVELOPER_EMAIL);
   // deno-lint-ignore no-explicit-any
   await db.begin(async (tx: any) => {
     await tx`delete from okb_setup.person`;
     for (const p of people) await tx`insert into okb_setup.person(auth_user_id, name, email, role) values (${p.auth_user_id}, ${p.name}, ${p.email}, ${p.role})`;
+    await tx`delete from okb_setup.staff_code`;
+    for (const c of coded) await tx`insert into okb_setup.staff_code(email, name, code_sha256, expires_at) values (${c.email}, ${c.name}, ${c.sha256}, ${c.expires_at})`;
     await tx`delete from okb_setup.open_task`;
     for (const [i, t] of tasks.entries())
       await tx`insert into okb_setup.open_task(position, title, description, completion_requirements) values (${i + 1}, ${t.title}, ${t.description}, ${t.completion_requirements})`;
     await tx`delete from okb_setup.owner_code`;
   });
-  return json(200, { ok: true, email, real_agent: people.filter(p => p.role === "real_agent").map(p => p.name), open_tasks: tasks.map(t => t.title) });
+  return json(200, { ok: true, email, real_agent: [...people.filter(p => p.role === "real_agent").map(p => p.name), ...coded.map(c => c.name)],
+    real_agent_codes: coded.map(c => ({ name: `${c.name} (Real Agent)`, email: c.email, code: c.code, expires_at: c.expires_at })), open_tasks: tasks.map(t => t.title) });
 }
 
 Deno.serve(async (req) => {

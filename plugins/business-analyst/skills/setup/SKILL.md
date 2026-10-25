@@ -1,13 +1,13 @@
 ---
 name: setup
-description: Use when a firm's owner types "Set up Real Agent" or "Set up OKB", or asks how setup stands. After one yes, builds the firm's Real Agent knowledge base, OKB, in their new Supabase project, with file search. It deploys the hosted functions through the Supabase connector, exposes the Data API, and makes the scopes and Real Agent's access. It signs the owner in and checks it all works, while the owner only connects Supabase, agrees and chooses a password. It runs in one of three modes: human only, AI guided or human directed.
+description: Use when a firm's owner types "Set up Real Agent" or "Set up OKB", or asks how setup stands. Once the owner agrees, it builds the firm's Real Agent knowledge base, OKB, in their new Supabase project, with file search. It deploys the hosted functions through the Supabase connector, exposes the Data API, and makes the scopes and Real Agent's access. It signs the owner in and checks it all works, while the owner only connects Supabase, agrees and chooses a password. It runs in one of three modes: human only, AI guided or human directed.
 ---
 
 # Real Agent setup
 
 The owner starts this skill by typing "Set up Real Agent". The older phrase, "Set up OKB", starts it too. It is done once per firm, before the first routine interview.
 
-The **owner** owns the firm's Supabase account and becomes the first administrator. Supabase asks a person for three things: creating the account and project, connecting Supabase to Claude, and choosing their own password. The business analyst, `business-analyst:business-analyst`, does everything else, after the owner's one yes. It never needs the Supabase command-line tool.
+The **owner** owns the firm's Supabase account and becomes the first administrator. Supabase asks a person for three things: creating the account and project, connecting Supabase to Claude, and choosing their own password. The business analyst, `business-analyst:business-analyst`, guides the owner through the first two, and does everything else once the owner agrees. It never needs the Supabase command-line tool.
 
 The business analyst never sees, asks for or types a password, a secret key or a token. The project's publishable key is public: the sign-in needs it, and the business analyst reads it with the connector. The owner types their password into the sign-in's own prompt, which sends it to Supabase alone.
 
@@ -15,8 +15,9 @@ The setup files are in the `okb` folder beside this skill: on macOS, `~/.claude/
 
 - `build.mjs` approves the setup files, sends them to the project, and lists each hosted function's files.
 - `functions/okb-setup/` runs each approved setup file in the project, and makes the owner's sign-in. `functions/okb-setup/real-agent.ts` holds Real Agent's staff, its Developer email address and its support address.
-- `functions/okb-invite/` stays deployed after setup. The database admin adds each later person, and Real Agent, with one call to it.
-- `setup.sql`, `file-search.sql`, `file-search-scopes.sql` and `schedule.sql` build OKB and file search. `first-administrator.sql` makes the administrator, the six scopes, Real Agent's actors and the open tasks setup leaves.
+- `functions/okb-invite/` stays deployed after setup. The database admin adds each later person with one call to it, which makes their actor and a one-time invitation code.
+- `functions/okb-join/` stays deployed too, with JWT verification off. A person spends their code there, and chooses their own password.
+- `setup.sql`, `file-search.sql`, `file-search-scopes.sql` and `schedule.sql` build OKB and file search. `first-administrator.sql` makes the administrator, the six scopes, Real Agent's actors with their invitation codes, and the open tasks setup leaves.
 - `state.sql` reads where a project stands, `reset.sql` takes an unfinished attempt off, `data-api.sql` exposes the `okb` schema, and `health.sql` is the health check.
 - `bootstrap.sql` holds the same steps for a person to run by hand, and each later person's grants.
 - `tests.sql` and `file-search-tests.sql` are Real Agent's release checks. Setup never runs them in a firm's project.
@@ -25,7 +26,7 @@ The setup files are in the `okb` folder beside this skill: on macOS, `~/.claude/
 
 The owner chooses the mode. AI guided is the default.
 
-- **AI guided:** the owner types "Set up Real Agent" and says yes once. The business analyst follows its lines below, and asks nothing more, except the owner's own sign-in.
+- **AI guided:** the owner types "Set up Real Agent" and agrees once. The business analyst follows its lines below, and asks nothing more, except the owner's own sign-in.
 - **Human directed:** the owner tells the business analyst what to do, step by step. It follows its line for each step the owner directs. A refusal from Supabase, OKB or a tool still stands.
 - **Human only:** the owner follows the Person lines below, in the Supabase dashboard and a terminal, without the business analyst.
 
@@ -33,35 +34,44 @@ Each step gives a **Person** line and a **Business analyst agent** line. Nothing
 
 ## What the owner reads
 
-The owner reads plain sentences only: no code block, table, SQL, command, test output or file name, unless they ask. The one exception is the sign-in command in section 3, the only command the owner ever sees. Each reply holds at most one question.
+The owner reads plain sentences only: no code block, table, SQL, command, test output or file name, unless they ask. The one exception is the sign-in command in section 3, the only command the owner ever sees. Each reply holds at most one question. A sentence the owner reads has no semicolon, and says nothing about what the owner or Real Agent does not need to do.
 
 - **Progress:** one short line per stage, as it ends, such as "Building your Real Agent knowledge base: done."
 - **Progress list:** a list of steps has exactly four, in the owner's words. They are "Confirm your project", "Build your knowledge base", "Your sign-in" and "Final checks".
 - **The end:** a summary of three to five lines, as below.
-- **A failure:** one plain sentence saying what failed and that Real Agent has been told, then stop. Before the owner's sign-in, Real Agent is told by the owner. The sentence asks them to email Real Agent's support address from `real-agent.ts`, or their Real Agent contact when it is null. After the sign-in, the business analyst saves a support request as the `real-agent:support` skill does, with the database's own message. The owner's yes to setup covers that save.
+- **A failure:** one plain sentence saying what failed and that Real Agent has been told, then stop. Before the owner's sign-in, Real Agent is told by the owner. The sentence asks them to email Real Agent's support address from `real-agent.ts`, or their Real Agent contact when it is null. After the sign-in, the business analyst saves a support request as the `real-agent:support` skill does, with the database's own message. The owner's agreement to setup covers that save.
 
 The owner's messages, in order, in a run with no failure:
 
 - "I found your Supabase project <name>. Shall I set up Real Agent in <name>?"
 - The progress lines from section 2, one per step.
-- "This makes your own account in your knowledge base and signs you in. Click Run on the line below. It asks your name, your email and a password you choose; the password goes only to Supabase. When it says you're signed in, type done here." Below it comes the sign-in command, alone, in one fenced code block tagged `bash`. The Claude desktop app gives that block a Run button, which runs it in the app's Terminal, where its password prompt works.
+- "This makes your own account in your knowledge base and signs you in. Click Run on the line below. It asks your name, your email and a password you choose. The password goes only to Supabase. When it says you're signed in, type done here." Below it comes the sign-in command, alone, in one fenced code block tagged `bash`. The Claude desktop app gives that block a Run button, which runs it in the app's Terminal, where its password prompt works.
 - The progress lines from section 4.
-- The summary: "Real Agent is set up in <name>, and you are its administrator. Everything checked out: your knowledge base, file search and your sign-in all work. One thing only you can do: in Supabase, open your organisation's Team page, choose Invite member, and invite <Developer email> as a Developer, so Real Agent can apply updates. A Developer can change the database and read its keys, but not your billing, members or settings, and you can remove it at any time. From your next session, this folder works with your database admin, who adds your staff and reminds you of anything still open."
+- The summary: "Real Agent is set up in <name>, and you are its administrator. Please email this one-time code to <Real Agent email>, so Real Agent can sign in: <code>. It works once, until <day>. In Supabase, open your organisation's Team page, choose Invite member, and invite <Developer email> as a Developer, so Real Agent can apply updates. From your next session, this folder works with your database admin, who adds your staff and reminds you of anything still open."
 
-When `real-agent.ts` gives no Developer email, the invitation sentence says Real Agent will send the address. When Real Agent's staff were not added, the summary adds "Your database admin will add Real Agent once the Developer invitation is accepted." On the Free plan, from `get_organization`, it adds "Your Supabase plan is Free, which pauses a project nobody uses for a week; a paid plan keeps it running."
+The code, its email and its last day come from `node "<okb>/build.mjs" real-agent-code --folder "<folder>"`, one line for each of Real Agent's staff. When `real-agent.ts` gives no staff, the summary leaves out the code's two sentences and adds "Your database admin will add Real Agent once Real Agent gives you its email address." When it gives no Developer email, the invitation sentence says Real Agent will send the address. On the Free plan, from `get_organization`, it adds "Your Supabase plan is Free, which pauses a project nobody uses for a week. A paid plan keeps it running."
 
-Real Agent's staff load the guides and the Python runtime themselves, as their actor, since only that actor changes the Guides and Plugins scopes. At the owner's sign-in, `okb-setup` invites each of them through Supabase Auth, which emails them a link to choose their password. Supabase's own email service writes only to members of the owner's Supabase organisation. So before the owner invites Real Agent as a Developer, the invitation is refused, and setup goes on without Real Agent.
+Real Agent's staff load the guides and the Python runtime themselves, as their actor, since only that actor changes the Guides and Plugins scopes. At the owner's sign-in, `okb-setup` makes a one-time invitation code for each of them, and sends no email. `first-administrator.sql` makes each one's actor, with the `real_agent` template's grants and no sign-in yet. Real Agent's staff member spends the code with the okb command's `sign-in --join`, and chooses their own password.
 
-Setup saves each loose end as an open task in Administration, assigned to the owner: "Add Real Agent as a user", or "Add Real Agent (<email>) as a user", and "Invite <Developer email> as a Developer in Supabase". The database admin raises the first one at the start of each session until it is done. It adds Real Agent with one call to `okb-invite`, which completes that task.
+Setup saves each loose end as an open task in Administration, assigned to the owner: "Invite <Developer email> as a Developer in Supabase", and "Send Real Agent its invitation code (<email>)". The database admin raises the first one still open at the start of each session. It completes the code's task once Real Agent's actor has signed in. When the code is lost or runs out, the database admin adds Real Agent again, which makes a new code. With no staff in `real-agent.ts`, the task is "Add Real Agent as a user", which the database admin's `okb-invite` call completes.
 
 ## Before setup
 
-The owner needs a Supabase account and project, and Supabase connected to Claude.
+The owner needs a Supabase account and project, and Supabase connected to Claude. When the Supabase connector's tools are missing, or `list_projects` gives no project, the business analyst takes the owner through the steps below. It sends one step per reply, and waits for the owner to say it is done before the next. It skips each step already done: with the connector there and no project, it starts at step 2.
 
-- **Person:** creates a free account at supabase.com, then a project in it, with the region closest to the firm. Saves the database password Supabase generates in a password manager. In the Claude desktop app, opens the connectors, connects Supabase and chooses the organisation. Then types "Set up Real Agent" in a new Code session on the setup folder.
-- **Business analyst agent:** without the Supabase connector's tools, or when `list_projects` gives no project, it tells the owner in two or three sentences: "Before I can set up Real Agent, you need a Supabase project and Supabase connected to Claude. Create a free account and a project at supabase.com, choosing the region nearest you. Then connect Supabase in this app's connectors, and type Set up Real Agent again." Then it stops.
+1. **The account.**
+   - **Person:** creates a Supabase account.
+   - **Business analyst agent:** says "First, create a free Supabase account at [supabase.com](https://supabase.com). Tell me when you have."
+2. **The project.**
+   - **Person:** creates a project, and saves its database password in a password manager.
+   - **Business analyst agent:** says "Next, create a project in Supabase. Name it after your business, and choose the region nearest you, such as London. Supabase shows a database password once, so save it in your password manager. The Free plan works, but Supabase pauses a free project nobody uses for a week. A paid plan keeps it running. Tell me when the project is ready."
+3. **The connector.**
+   - **Person:** connects Supabase to Claude.
+   - **Business analyst agent:** says "Last, connect Supabase to Claude in this app's connectors, and choose your business's Supabase organisation. Tell me when it's connected."
 
-**AI guided:** the business analyst checks this silently, and speaks only when something is missing.
+After step 3 the business analyst calls `list_projects` itself. When the connector's tools are not in the session, it says "Supabase is connected, but this session started before it. Start a new Code session on this folder, and type Set up Real Agent again." Then it stops. Otherwise it goes straight on to section 1.
+
+**AI guided:** the business analyst checks this silently, and speaks only when a step is missing.
 
 ## 1. Find the project and agree
 
@@ -72,9 +82,9 @@ The owner needs a Supabase account and project, and Supabase connected to Claude
    - **Person:** decides to go ahead.
    - **Business analyst agent:** with `setup_finished` true, says "Real Agent is already set up in <name>." and stops. With `okb_built` false, asks "Shall I set up Real Agent in <name>?" With `okb_built` true and `setup_finished` false, an earlier attempt stopped part way. When `records` and `files` are both 0, it asks "An earlier setup in <name> stopped part way. Shall I clear it and set up Real Agent again?" Otherwise it says "<name> already holds Real Agent records from an earlier setup, so I've stopped. Real Agent needs to look at it." and stops, as "What the owner reads" says for a failure.
 
-The owner's yes covers every step up to their sign-in, and the reset when the question named it.
+The owner's agreement covers every step up to their sign-in, and the reset when the question named it.
 
-**AI guided:** after the yes, the business analyst asks nothing until section 3.
+**AI guided:** once the owner agrees, the business analyst asks nothing until section 3.
 
 ## 2. Build
 
@@ -85,8 +95,8 @@ The owner's yes covers every step up to their sign-in, and the reset when the qu
    - **Person:** in the dashboard's SQL Editor, runs the whole of `setup.sql`, then `file-search.sql`, then `file-search-scopes.sql`, each in a new query, unchanged. When the editor offers to change a file or turn on Row Level Security, chooses the option that runs it unchanged.
    - **Business analyst agent:** for a reset, runs `node "<okb>/build.mjs" run --url <project URL> --key <publishable key> reset.sql` first. Then the same command with `setup.sql file-search.sql file-search-scopes.sql`. It prints one line per file, and stops at a failure with the database's message. Tells the owner "Building your Real Agent knowledge base: done."
 3. **Deploy file search's hosted functions.**
-   - **Person:** opens **Edge Functions** and deploys each function in the editor. `file-search-worker` takes its `index.ts` and `text.ts`, with JWT verification off. `file-search`, `file-search-purge` and `okb-invite` each take their `index.ts`, with it on.
-   - **Business analyst agent:** deploys the other four functions as the listing gives them, in its order. Each goes with `deploy_edge_function`, its `verify_jwt` setting and each of its files. Then runs `node "<okb>/build.mjs" run --url <project URL> --key <publishable key> schedule.sql`, which fills in the project reference itself. Tells the owner "Setting up file search: done."
+   - **Person:** opens **Edge Functions** and deploys each function in the editor. `file-search-worker` takes its `index.ts` and `text.ts`, with JWT verification off. `file-search`, `file-search-purge` and `okb-invite` each take their `index.ts`, with it on. `okb-join` takes its `index.ts`, with it off.
+   - **Business analyst agent:** deploys the other five functions as the listing gives them, in its order. Each goes with `deploy_edge_function`, its `verify_jwt` setting and each of its files. Then runs `node "<okb>/build.mjs" run --url <project URL> --key <publishable key> schedule.sql`, which fills in the project reference itself. Tells the owner "Setting up file search: done."
 4. **Expose the Data API.** Supabase's Data API serves the `okb` schema, through which each person's agent works.
    - **Person:** runs `data-api.sql` in the SQL Editor, or ticks `okb` under the Data API's **Exposed schemas** and saves.
    - **Business analyst agent:** runs `data-api.sql`'s text through `execute_sql`. It goes on when the setting it reads back names `okb`. Supabase's own documentation gives this statement for exposing a schema. Once it is set, the dashboard's Exposed schemas list no longer manages the setting.
@@ -106,13 +116,13 @@ The owner's Auth user is their Supabase sign-in. The `okb-setup` hosted function
 
 1. **Make the administrator and the scopes.**
    - **Person:** none beyond section 3: in human only mode, `bootstrap.sql` made them.
-   - **Business analyst agent:** once the owner types "done", runs `node "<okb>/build.mjs" run --url <project URL> --key <publishable key> first-administrator.sql`. It makes the owner the first administrator, the six scopes and the owner's sessions scope. It makes each of Real Agent's staff whom Supabase invited an actor named "<name> (Real Agent)", with the `real_agent` template's grants, approved by the owner. It saves each open task, as the owner. Tells the owner "Making you the administrator: done."
+   - **Business analyst agent:** once the owner types "done", runs `node "<okb>/build.mjs" run --url <project URL> --key <publishable key> first-administrator.sql`. It makes the owner the first administrator, the six scopes and the owner's sessions scope. It makes each of Real Agent's staff an actor named "<name> (Real Agent)", with the `real_agent` template's grants, approved by the owner, and their open invitation. It saves each open task, as the owner. Tells the owner "Making you the administrator: done."
 2. **Check that it works.**
    - **Person:** runs `health.sql` in the SQL Editor, and sees `ok` true.
-   - **Business analyst agent:** runs `health.sql`'s text through `execute_sql`, and goes on when `ok` is true. Calls `list_edge_functions`, and goes on when the five functions are there, with `verify_jwt` off for `file-search-worker` and `okb-setup` alone. In the setup folder, with `Bash`, runs `node "<marketplace>/plugins/okb/cli/okb.mjs" okb_get_scopes`, which must list `general`, `routines`, `reference` and `plugins`. Then `node "<marketplace>/plugins/okb/cli/okb.mjs" call_function name=file-search "body.query=setup check"`, which must answer with `hits`. Tells the owner "Checking everything works: done."
+   - **Business analyst agent:** runs `health.sql`'s text through `execute_sql`, and goes on when `ok` is true. Calls `list_edge_functions`, and goes on when the six functions are there, with `verify_jwt` off for `file-search-worker`, `okb-setup` and `okb-join` alone. In the setup folder, with `Bash`, runs `node "<marketplace>/plugins/okb/cli/okb.mjs" okb_get_scopes`, which must list `general`, `routines`, `reference` and `plugins`. Then `node "<marketplace>/plugins/okb/cli/okb.mjs" call_function name=file-search "body.query=setup check"`, which must answer with `hits`. Tells the owner "Checking everything works: done."
 3. **Save the setup record, and hand the folder over.**
    - **Person:** runs `okb okb_add_record` in the setup folder, as the agent's line gives it.
-   - **Business analyst agent:** with the same command, runs `okb_add_record` with `p_scope=administration`, `p_kind=evidence` and `p_title=Real Agent setup`. Its `p_reason` is "The setup skill's record of who set the project up, and how." Its `p_fields` hold a `summary` of what was built and what the health check found, `source_reference` "The setup skill", today's `source_date`, `standing` "observed" and `limitations` "Written down by the business analyst during setup." Nothing is saved on the owner's computer. It runs `drop schema okb_setup cascade;` through `execute_sql`. Then it runs `node "<marketplace>/plugins/okb/cli/okb.mjs" setup --folder "<folder>" --email <owner's email> --agent real-agent:database-admin`, which makes the folder the database admin's.
+   - **Business analyst agent:** with the same command, runs `okb_add_record` with `p_scope=administration`, `p_kind=evidence` and `p_title=Real Agent setup`. Its `p_reason` is "The setup skill's record of who set the project up, and how." Its `p_fields` hold a `summary` of what was built and what the health check found, `source_reference` "The setup skill", today's `source_date`, `standing` "observed" and `limitations` "Written down by the business analyst during setup." Nothing is saved on the owner's computer. It runs `node "<okb>/build.mjs" real-agent-code --folder "<folder>"` with `Bash`, which prints each of Real Agent's codes for the summary, and deletes the file the sign-in kept them in. It runs `drop schema okb_setup cascade;` through `execute_sql`. Then it runs `node "<marketplace>/plugins/okb/cli/okb.mjs" setup --folder "<folder>" --email <owner's email> --agent real-agent:database-admin`, which makes the folder the database admin's.
 
 **AI guided:** the business analyst ends with the summary below, and asks nothing.
 

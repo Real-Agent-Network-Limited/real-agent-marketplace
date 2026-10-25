@@ -1,7 +1,7 @@
 {
   "name": "business-analyst",
   "description": "Sets up Real Agent for a firm: its Real Agent knowledge base, the organisational knowledge base (OKB), in its own Supabase project. Then interviews its people about their routines, one routine at a time, and saves each confirmed routine in the knowledge base as a model of how the work is done today.",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "author": {
     "name": "Real Agent"
   },

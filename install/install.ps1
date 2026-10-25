@@ -28,7 +28,7 @@ $ErrorActionPreference = 'Continue'
 $ProgressPreference = 'SilentlyContinue'
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
-$Usage = "Usage: powershell -ExecutionPolicy Bypass -File install.ps1 <marketplace> --owner [--folder <folder>]`n       powershell -ExecutionPolicy Bypass -File install.ps1 <marketplace> --email <email> [--folder <folder>] [--url <project URL> --key <publishable key>] [--agent <plugin>:<agent>] [--new-password]"
+$Usage = "Usage: powershell -ExecutionPolicy Bypass -File install.ps1 <marketplace> --owner [--folder <folder>]`n       powershell -ExecutionPolicy Bypass -File install.ps1 <marketplace> --email <email> [--folder <folder>] [--url <project URL> --key <publishable key>] [--agent <plugin>:<agent>] [--new-password | --join]"
 if ($args.Count -lt 1 -or "$($args[0])" -eq '' -or "$($args[0])".StartsWith('-')) { Write-Host $Usage; exit 2 }
 $Marketplace = "$($args[0])"
 $Rest = @($args | Select-Object -Skip 1 | ForEach-Object { "$_" })

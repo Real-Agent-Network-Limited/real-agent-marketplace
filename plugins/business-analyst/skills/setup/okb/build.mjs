@@ -6,6 +6,7 @@
 //   node build.mjs approve --ref <project reference> --folder <setup folder> [--reset]
 //   node build.mjs run --url <project URL> [--key <publishable key>] [--ref <project reference>] <file> [<file> ...]
 //   node build.mjs functions
+//   node build.mjs real-agent-code --folder <setup folder>
 //
 // approve prints one SQL statement for the Supabase connector's execute_sql. It makes the okb_setup schema, which
 // the okb-setup hosted function reads, and approves this folder's setup files by their SHA-256, each to run once:
@@ -20,9 +21,15 @@
 // functions prints, as JSON, each hosted function to deploy with the connector's deploy_edge_function, in order:
 // its name, its verify_jwt setting, its entrypoint and the full path of each of its files, with the name each file
 // is deployed under.
+//
+// real-agent-code prints, one line each, the one-time invitation code okb-setup made for each of Real Agent's staff at
+// the owner's sign-in, which the sign-in saved to the setup folder's .okb-real-agent-code, readable by the owner alone:
+// the actor's name, the email to send the code to, the code and the day it runs out. Then it deletes the file, so the
+// code is kept nowhere on the computer. The setup summary gives the owner each line. It prints nothing when the file
+// holds no code, and says so when there is no file.
 import process from "node:process";
 import { createHash, randomBytes } from "node:crypto";
-import { chmodSync, existsSync, readFileSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -32,10 +39,13 @@ export const PROJECT_REF = /^[a-z0-9]{20}$/;
 export const BUILD_FILES = ["setup.sql", "file-search.sql", "file-search-scopes.sql", "schedule.sql", "first-administrator.sql"];
 /** The file in the setup folder that holds the owner's sign-in code. */
 export const OWNER_CODE_FILE = ".okb-owner-code";
+/** The file in the setup folder where the owner's sign-in saves Real Agent's invitation codes, as the okb plugin's sign-in-flow.mjs names it. */
+export const REAL_AGENT_CODE_FILE = ".okb-real-agent-code";
 
 /**
  * The hosted functions, in the order setup deploys them. okb-setup runs the setup files; the file search
- * functions follow, each with every file it imports; then okb-invite, which stays, for the database admin's invitations.
+ * functions follow, each with every file it imports; then okb-invite, which stays, for the database admin's invitations,
+ * and okb-join, where an invited person spends their code and chooses their password.
  */
 export const FUNCTIONS = [
   { name: "okb-setup", verify_jwt: false, files: ["index.ts", "real-agent.ts"] },
@@ -43,11 +53,13 @@ export const FUNCTIONS = [
   { name: "file-search", verify_jwt: true, files: ["index.ts"] },
   { name: "file-search-purge", verify_jwt: true, files: ["index.ts"] },
   { name: "okb-invite", verify_jwt: true, files: ["index.ts"] },
+  { name: "okb-join", verify_jwt: false, files: ["index.ts"] },
 ];
 
 export const USAGE = `Usage: node build.mjs approve --ref <project reference> --folder <setup folder> [--reset]
        node build.mjs run --url <project URL> [--key <publishable key>] [--ref <project reference>] <file> [<file> ...]
-       node build.mjs functions`;
+       node build.mjs functions
+       node build.mjs real-agent-code --folder <setup folder>`;
 
 const sha256 = text => createHash("sha256").update(text, "utf8").digest("hex");
 const literal = text => `'${String(text).replaceAll("'", "''")}'`;
@@ -76,6 +88,7 @@ create table if not exists okb_setup.approved (sha256 text primary key, name tex
 create table if not exists okb_setup.owner_code (sha256 text primary key, expires_at timestamptz not null);
 create table if not exists okb_setup.person (auth_user_id uuid primary key, name text not null, email text not null, role text not null check (role in ('owner', 'real_agent')));
 create table if not exists okb_setup.open_task (position int primary key, title text not null, description text not null, completion_requirements text not null);
+create table if not exists okb_setup.staff_code (email text primary key, name text not null, code_sha256 text not null, expires_at timestamptz not null);
 revoke all on all tables in schema okb_setup from public, anon, authenticated;
 delete from okb_setup.approved;
 insert into okb_setup.approved (sha256, name) values
@@ -105,6 +118,21 @@ export function functions(here = HERE) {
   }));
 }
 
+/** The day a code runs out, in words, such as 1 November 2026. */
+const day = iso => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+
+/** Real Agent's codes from the setup folder, one line each, and the file deleted. */
+export function realAgentCodes(folder) {
+  if (!folder || !existsSync(folder)) throw new Error(`${folder ?? "--folder"} is not a folder.`);
+  const file = join(resolve(folder), REAL_AGENT_CODE_FILE);
+  if (!existsSync(file)) throw new Error(`${folder} holds no ${REAL_AGENT_CODE_FILE}: the owner's sign-in saved no code for Real Agent, or it was read already.`);
+  let codes;
+  try { codes = JSON.parse(readFileSync(file, "utf8")); } catch { codes = null; }
+  if (!Array.isArray(codes)) throw new Error(`${file} is not the list the owner's sign-in saves.`);
+  rmSync(file, { force: true });
+  return codes.map(c => `${c.name}, ${c.email}: ${c.code}, until ${day(c.expires_at)}`);
+}
+
 function options(argv) {
   const out = { files: [] };
   for (let i = 0; i < argv.length; i++) {
@@ -131,6 +159,7 @@ export async function main(argv, { say = line => process.stdout.write(`${line}\n
       return 0;
     }
     if (command === "functions") { say(JSON.stringify(functions(), null, 2)); return 0; }
+    if (command === "real-agent-code") { for (const line of realAgentCodes(o.folder)) say(line); return 0; }
     if (command === "run") {
       const ref = o.ref ?? /^https:\/\/([a-z0-9]{20})\.supabase\.co\/?$/.exec(o.url ?? "")?.[1];
       if (!o.url || !o.files.length) throw new Error(`run needs --url and at least one file.\n${USAGE}`);

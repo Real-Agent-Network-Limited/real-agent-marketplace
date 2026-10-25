@@ -51,4 +51,7 @@ begin
  if to_regclass('okb_setup.person') is not null then
   delete from okb_setup.person;
  end if;
+ if to_regclass('okb_setup.staff_code') is not null then
+  delete from okb_setup.staff_code;
+ end if;
 end $$;
