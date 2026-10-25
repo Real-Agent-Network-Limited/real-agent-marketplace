@@ -28,7 +28,11 @@ import { fileURLToPath } from "node:url";
 export const SERVER = "plugin_okb_okb";
 export const OKB = ["whoami", "rpc", "call_function", "upload_file", "list_files", "download_file", "read_file",
   "draw_graph", "draw_search", "draw_board", "draw_state_machine", "state_machine_payload", "draw_reference", "draw_sop", "report_page", "print_pdf",
-  "embed_pictures", "check_text", "update_plugins", "check_plugins", "copy_to_agent_folder", "create_workbook", "edit_workbook", "copy_samples", "run_code"];
+  "embed_pictures", "check_text", "update_plugins", "check_plugins", "copy_to_agent_folder", "create_workbook", "edit_workbook", "copy_samples", "run_code",
+  "invite_person"];
+// The okb tools only the database admin uses: invite_person, which adds a person through the okb-invite hosted function.
+// call_function naming okb-invite is the same call, and is the database admin's alone too.
+export const ADMIN_ONLY = { tools: ["invite_person"], functions: ["okb-invite"], agent: "real-agent:database-admin" };
 
 // Claude in Chrome's server, the same in a terminal and in the desktop app, and its tools that open and read a page.
 // Its tools that click, type, fill a form, run a script or upload a file are refused.
@@ -173,14 +177,17 @@ export function searchAllowed(tool, input, added = []) {
   return inside(input?.path, added, true);
 }
 
-/** Whether the agent may call the tool: true for any agent but these two; for them, only their own tools, and a connector's
+/** Whether the agent may call the tool, with the call's input: true for any agent but these two; for them, only their own
+ * tools, invite_person and call_function naming okb-invite for the database admin alone, and a connector's
  * tools on its own server, given the desktop ids the session has marked. A connector's tool still needs the person's
  * agreement in the session, which the hook asks for. */
-export function allowed(agentType, toolName, marked = {}) {
+export function allowed(agentType, toolName, marked = {}, input = {}) {
   if (!AGENTS[agentType]) return true;
   if (!String(toolName).startsWith("mcp__")) return BUILT_IN.includes(String(toolName));
   const [, server = "", ...rest] = String(toolName).split("__");
   const tool = rest.join("__");
+  if (server === SERVER && agentType !== ADMIN_ONLY.agent
+    && (ADMIN_ONLY.tools.includes(tool) || (tool === "call_function" && ADMIN_ONLY.functions.includes(String(input?.name ?? "").trim())))) return false;
   return (server === SERVER && OKB.includes(tool)) || (server === CHROME && CHROME_READ.includes(tool))
     || (AGENTS[agentType].connectors && connectorOf(server, tool, marked) !== null);
 }
@@ -216,10 +223,12 @@ if (argv[1] && real(fileURLToPath(import.meta.url)) === real(argv[1])) {
       for (const key of marks) state.marked[key] = [...(state.marked[key] ?? []), server];
       if (marks.length) state.save({ marked: state.marked });
     }
-    if (!allowed(call?.agent_type ?? "", tool, state?.marked)) {
+    if (!allowed(call?.agent_type ?? "", tool, state?.marked, call?.tool_input)) {
       const other = DESKTOP_ID.test(server) ? Object.values(CONNECTORS).find(c => c.has(name)) : null;
+      const adminOnly = server === SERVER && (ADMIN_ONLY.tools.includes(name) || name === "call_function");
       deny(other
         ? `The ${who} uses ${name} only on ${other.label}. Use one of ${other.label}'s own tools on it first, so the hook knows ${server} is ${other.label}.`
+        : adminOnly ? `The ${who} adds no one: inviting a person is the database admin's, @real-agent:database-admin.`
         : `The ${who} does not use ${tool}.`);
     }
     if (AGENTS[call?.agent_type] && tool === `mcp__${CHROME}__navigate` && !chromeUrlAllowed(call?.tool_input?.url))

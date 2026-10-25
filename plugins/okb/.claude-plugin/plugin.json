@@ -1,7 +1,7 @@
 {
   "name": "okb",
   "description": "Lets each person work in their firm's Real Agent knowledge base, its organisational knowledge base (OKB), in the firm's own Supabase project, within their own permissions: records, files and their search, the glossary and data dictionary, boards, graphs and printed PDFs.",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "author": {
     "name": "Real Agent"
   },

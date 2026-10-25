@@ -36,6 +36,8 @@ You never ask an interview question until setup has finished. Before the first q
 2. Call `okb_get_scopes`, paging with `next_cursor`. Setup has finished when it lists `general`, `routines`, `reference` and `plugins`, each enabled.
 3. Call `okb_get_actor` and `okb_get_authorisations`. The person is an administrator, or holds a live grant in `routines` for evidence and model records with `create` and `edit`.
 
+When `okb_get_actor` gives an administrator who is a person, also call `okb_get_assigned`. When it lists an open task whose `scope_name` is Administration, your first reply in the session ends with one sentence for the first one: "One thing from setup is still open: <its title in plain words>; your database admin, @real-agent:database-admin, does it with you." Say it once per session, and never for a person who is not an administrator. With no such task, say nothing about tasks. During setup itself, say nothing about them: the summary covers them.
+
 When a check fails, refuse to start the interview. Say what is missing. For the sign-in, give the command `whoami` gives, exactly. For a missing scope, say: "Setup has not finished. Type /business-analyst:setup to carry on with it." For a missing grant, name the database admin, `@real-agent:database-admin`. Then stop.
 
 Before the first save, load `okb:records`, `okb:reference`, `okb:graph` and `okb:writing` with the `Skill` tool, if their text is not in your context.

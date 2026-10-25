@@ -1,5 +1,5 @@
-// The Supabase Auth user's tools: `whoami`, `rpc`, `call_function`, `upload_file`, `list_files`,
-// `download_file` and `read_file`, under that user's own rights; `update_plugins`, which runs okb sync
+// The Supabase Auth user's tools: `whoami`, `rpc`, `call_function`, `invite_person`, which calls the okb-invite
+// hosted function, `upload_file`, `list_files`, `download_file` and `read_file`, under that user's own rights; `update_plugins`, which runs okb sync
 // as that user; `check_plugins`, which compares the plugins installed from the real-agent marketplace with
 // the newest release in the Plugins scope, with cli/releases.mjs, changes nothing, and gives what the
 // session's folder holds, as session-folder.mjs reads it; and `copy_to_agent_folder`, which copies a file
@@ -67,6 +67,22 @@ export const TOOLS = [
         result_file: { type: "string", description: "The full path of a new file directly inside the agent folder, which the reply is written to as JSON. A file already there is never replaced. The reply then says where the result went, not what it is." },
       },
       required: ["name"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "invite_person",
+    description: "Add one person to the firm's OKB in one call, as the signed-in administrator, through the okb-invite hosted function: it invites their email through Supabase Auth, which emails them a link to choose their password, or reuses the sign-in they already have; makes their actor, named \"<name> (Real Agent)\" for the real_agent template, with their sessions scope; gives the access template's grants, or a workflow role's grants from its access.json with the basic template's; saves the access record in the Administration scope; and, for Real Agent, completes setup's open \"Add Real Agent\" tasks. Give template, or workflow and role. Only an administrator's call goes on. Returns the person's name, email, actor_id, sign_in (invited or existing), the grants given by scope name, access_record_id and completed_tasks; never a password or a link.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "The person's name, as the firm calls them, such as Sam Lee, or Support for Real Agent's staff." },
+        email: { type: "string", description: "The person's work email address." },
+        template: { type: "string", description: "An access template's code, such as basic or real_agent, as okb_get_access_templates lists them. Omit for a workflow role." },
+        workflow: { type: "string", description: "A workflow plugin's name, such as appraisal, for a role in it. Give role with it." },
+        role: { type: "string", description: "One role in the workflow's access.json, such as negotiator." },
+      },
+      required: ["name", "email"],
       additionalProperties: false,
     },
   },
@@ -271,6 +287,16 @@ export function createTools({ ref, email, agentFolder = null, defaultSchema = nu
     return { ok: true, resultFile: written.file, bytes: written.bytes, summary: summarise(out.body) };
   }
 
+  /** okb-invite, as the signed-in person, with only the fields it reads. Its own answer comes back, refusal or not. */
+  async function invitePerson(args) {
+    const body = Object.fromEntries(["name", "email", "template", "workflow", "role"].filter(k => args[k] !== undefined).map(k => [k, args[k]]));
+    const session = await access();
+    if (!session.ok) return session;
+    const out = await callFunction(session.url, session.key, session.token, "okb-invite", body);
+    if (out.ok) return out.body;
+    return out.body && typeof out.body === "object" && out.body.ok === false ? out.body : { ok: false, problem: out.problem };
+  }
+
   async function uploadFile(args) {
     const source = uploadSource(agentFolder, args.file, args.content_type);
     if (!source.ok) return source;
@@ -415,6 +441,7 @@ export function createTools({ ref, email, agentFolder = null, defaultSchema = nu
       if (name === "whoami") return asContent(await whoami());
       if (name === "rpc") return asContent(await rpc(args ?? {}));
       if (name === "call_function") return asContent(await callHostedFunction(args ?? {}));
+      if (name === "invite_person") return asContent(await invitePerson(args ?? {}));
       if (name === "upload_file") return asContent(await uploadFile(args ?? {}));
       if (name === "list_files") return asContent(await listFiles(args ?? {}));
       if (name === "download_file") return asContent(await downloadFile(args ?? {}));
