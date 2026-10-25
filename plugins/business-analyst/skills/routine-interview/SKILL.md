@@ -32,7 +32,7 @@ The interview starts only after the firm's setup has finished, as the `business-
   1. Calls `whoami`. When its answer gives a sign-in command, or names no project, setup has not finished for this person.
   2. Calls `okb_get_scopes`, and pages through it with `next_cursor`. Setup has finished when the scopes hold `general`, `routines`, `reference` and `plugins`, each with `enabled` true.
   3. Calls `okb_get_actor` and `okb_get_authorisations`. The person can save the interview when they are an `administrator`. A restricted person needs a live grant in `routines` for `evidence` and `model` records, with the `create` and `edit` actions.
-  4. When any check fails, asks no interview question. Says the interview waits for setup, and names what is missing: the sign-in, each missing scope, or the grant. For the sign-in, gives the command from `whoami` exactly. For a missing scope, says: "Setup has not finished. Type /business-analyst:setup to carry on with it." For the grant, names the database admin, `@real-agent:database-admin`, who gives it. Then stops.
+  4. When any check fails, asks no interview question. Says the interview waits for setup, and names what is missing: the sign-in, each missing scope, or the grant. For the sign-in, gives the command from `whoami` exactly. For a missing scope, says: "Setup has not finished. Type /business-analyst:setup to carry on with it." For the grant, says their administrator gives it. Then stops.
 
 **AI guided:** the business analyst gives the person the result of each check, and waits for their approval to start.
 
@@ -45,7 +45,7 @@ The interview starts only after the firm's setup has finished, as the `business-
   3. With a yes, saves the consent as an evidence record, with the fields in the Person line. It calls `okb_add_record` with `p_preview` true, then `okb_save_version` with the preview's `request` and `authorisation_id`. The speaker's yes is their agreement to this save, and to each statement saved in sections 3 to 5. The business analyst asks no other question before those saves.
   4. With a no, saves nothing, thanks them, and stops.
   5. A second speaker gives their own consent, the same way, before their first statement is saved.
-  6. When a speaker withdraws their consent, saves nothing more of theirs. Saves the withdrawal as an evidence record titled `<speaker>: consent withdrawn`. Tells them the database admin decides what happens to what is already saved. Then stops.
+  6. When a speaker withdraws their consent, saves nothing more of theirs. Saves the withdrawal as an evidence record titled `<speaker>: consent withdrawn`. Tells them the firm's administrator decides what happens to what is already saved. Then stops.
 
 **AI guided:** the business analyst gives the person the saved consent record, and waits for their approval before the first question about the routine.
 
@@ -142,7 +142,7 @@ Anything said after the save is a new version of the model, read back and saved 
 ## Problems
 
 - **The check in section 1 fails:** the interview waits. The person finishes setup, or signs in, as the check says.
-- **No grant to save evidence or a model in `routines`:** OKB's refusal names the missing action. The database admin, `@real-agent:database-admin`, can grant it.
+- **No grant to save evidence or a model in `routines`:** OKB's refusal names the missing action. Their administrator can grant it.
 - **"stale":** someone saved a newer version. The business analyst reads the record again, and shows the person the newer version before saving.
 - **A relationship whose ends are not classes:** `okb_save_term` refuses it. Each class is saved first, as the `okb:reference` skill's section 2 says.
 - **A file that cannot be read:** its evidence record says so in `limitations`, with the file's name.

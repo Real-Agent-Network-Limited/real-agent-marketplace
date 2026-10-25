@@ -55,7 +55,7 @@ export function uploadProblems(folder, lines = LOG_LINES) {
 }
 
 // The agents a folder can name, when installed_plugins.json cannot be read.
-const KNOWN_AGENTS = ["real-agent:database-operator", "real-agent:database-admin", "business-analyst:business-analyst"];
+const KNOWN_AGENTS = ["real-agent:database-operator", "business-analyst:business-analyst"];
 
 /** The agents installed on this computer from the real-agent marketplace, as `<plugin>:<agent>`, from each plugin's
  * agents folder. A transcript's agentSetting can name a skill, which setup refuses as an agent. */
@@ -148,10 +148,10 @@ export function ownEmail(configDir = configFolder()) {
   } catch { return null; }
 }
 
-/** The agent a folder's name points to: the database admin for a folder named for an administrator. */
+/** The agent a folder's name points to: the business analyst, the administrators' agent, for a folder named for an administrator. */
 export const agentByName = folder => {
   const name = folder.split(/[\\/]/).filter(Boolean).pop()?.toLowerCase() ?? "";
-  return name.includes("admin") ? "real-agent:database-admin" : "real-agent:database-operator";
+  return name.includes("admin") ? "business-analyst:business-analyst" : "real-agent:database-operator";
 };
 
 /**

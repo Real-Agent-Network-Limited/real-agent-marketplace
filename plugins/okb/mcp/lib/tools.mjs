@@ -34,13 +34,17 @@ const MAX_COPY_BYTES = 50 * 1024 * 1024;
 export const PUBLIC_MARKETPLACE = "Real-Agent-Network-Limited/real-agent-marketplace";
 const RAW = `https://raw.githubusercontent.com/${PUBLIC_MARKETPLACE}/main/install`;
 
+/** The agent an invited person's folder works with: the business analyst for an administrator, and otherwise none named,
+ * so okb setup gives the database operator. */
+export const agentFor = template => template === "administrator" ? "business-analyst:business-analyst" : null;
+
 /**
  * The commands a person runs to set up their folder and sign in, with the project's address and publishable key, which is
  * public: command, with Real Agent installed, and the README's install one-liners for macOS and Windows when it is not.
- * With a code, --join makes the sign-in ask for it and a password they choose.
+ * With a code, --join makes the sign-in ask for it and a password they choose. With an agent, --agent names it.
  */
-export function personCommands(url, key, email, join) {
-  const options = `--email ${email} --url ${url} --key ${key}${join ? " --join" : ""}`;
+export function personCommands(url, key, email, join, agent = null) {
+  const options = `--email ${email} --url ${url} --key ${key}${join ? " --join" : ""}${agent ? ` --agent ${agent}` : ""}`;
   return {
     command: `node ~/.claude/plugins/marketplaces/${MARKETPLACE_NAME}/plugins/okb/cli/okb.mjs setup ${options}`,
     install_command: `cd ~ && curl -fsSLO ${RAW}/install.sh && bash install.sh ${PUBLIC_MARKETPLACE} ${options}`,
@@ -311,7 +315,7 @@ export function createTools({ ref, email, agentFolder = null, defaultSchema = nu
     const session = await access();
     if (!session.ok) return session;
     const out = await callFunction(session.url, session.key, session.token, "okb-invite", body);
-    if (out.ok && out.body?.ok) return { ...out.body, ...personCommands(session.url, session.key, out.body.email, out.body.sign_in === "code") };
+    if (out.ok && out.body?.ok) return { ...out.body, ...personCommands(session.url, session.key, out.body.email, out.body.sign_in === "code", agentFor(out.body.template)) };
     if (out.ok) return out.body;
     return out.body && typeof out.body === "object" && out.body.ok === false ? out.body : { ok: false, problem: out.problem };
   }

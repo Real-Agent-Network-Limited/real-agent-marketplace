@@ -12,7 +12,7 @@ operation stored in the project's database, such as `okb_get_scopes`, and `rpc` 
 Supabase's REST API.
 
 Changes go through the database operator, `@real-agent:database-operator`, or for an administrator
-the database admin, `@real-agent:database-admin`. Each asks before each change. A session that is
+the business analyst, `@business-analyst:business-analyst`. Each asks before each change. A session that is
 neither does not make changes itself with these tools.
 
 An **actor** is a person, an agent or an application with access to the project. An actor signs in as a **Supabase
@@ -204,7 +204,7 @@ The person can add a folder of their own to a session when they start it, such a
 folder. Claude Code writes the folders added at the start in the session's transcript, and the okb
 plugin's hook reads them there. A folder added during a session is read in a new session.
 
-The database operator and the database admin read such a folder, read only. They find its files with
+The database operator and the business analyst read such a folder, read only. They find its files with
 `Glob` and `Grep`, each given the folder's full path as `path`, and read a file with `Read`. They
 write and change files in the agent folder alone. The agent copies a file into the agent folder with
 `copy_to_agent_folder`, after the person's agreement. It then uploads the copy, or works on it with
@@ -240,7 +240,7 @@ session.
      - The email: the account the folder's earlier sessions signed in as, or else the okb plugin's
        settings.
      - The agent: the folder's agent setting, or the agent of its earlier sessions, or else the agent
-       the folder's name points to: the database admin for a name with "admin" in it, and the
+       the folder's name points to: the business analyst for a name with "admin" in it, and the
        database operator otherwise.
    - The agent names the email and the agent with where each came from, in one line. When `command`
      is null, it asks for the email before it gives the command.

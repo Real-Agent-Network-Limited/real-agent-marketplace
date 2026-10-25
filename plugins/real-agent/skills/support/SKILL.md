@@ -69,7 +69,7 @@ The request is one task in General, with these fields:
 2. **Save it once the person agrees.**
    - **Person:** runs the same command without `p_preview`.
    - **The agent:** calls `okb_save_version` with the preview's `request` and `authorisation_id`, unchanged.
-   - A refusal for a missing `create` grant in General goes to the database admin, `@real-agent:database-admin`, as the `okb:records` skill's section 3 says.
+   - A refusal for a missing `create` grant in General goes to the person's administrator, as the `okb:records` skill's section 3 says.
    - **Evidence:** the saved version's `record_id` and `version_id`.
 
 **AI guided:** the agent gives the person the saved request's title, and waits for their approval before section 4.

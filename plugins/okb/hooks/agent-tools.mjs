@@ -1,11 +1,13 @@
-// Keeps the database operator and the database admin to the okb plugin's tools, Claude in Chrome's tools that
+// Keeps the database operator and the business analyst to the okb plugin's tools, Claude in Chrome's tools that
 // open and read a page, never at a Supabase address, for the database operator the person's Google and Microsoft 365
 // connectors as CONNECTORS gives them, and the built-in tools in BUILT_IN, beside each agent's disallowedTools. Every other MCP tool is refused,
 // the Supabase connector's among them, since it reaches past OKB's grants. Read reads a skill's own files, inside the
 // installed plugins' folder, and the files in each folder added to the session. Glob and Grep search those added folders
 // alone, and copy_to_agent_folder copies a file from one into the agent folder. For run_code, from any agent or session,
 // on any server whose tool is named run_code, it saves those folders for the session's folder, and run_code reads them alone. Reads the tool
-// call from stdin, as Claude Code's PreToolUse hooks receive it; any other agent's calls go ahead. one-issue.mjs,
+// call from stdin, as Claude Code's PreToolUse hooks receive it; any other agent's calls go ahead. The business analyst's
+// calls all go ahead while setup is under way in the session's folder, as setup-marker.mjs reads it: setup needs the
+// Supabase connector and Bash. Once setup has finished there, it is held as the database operator is. one-issue.mjs,
 // agent-folder-edit.mjs and connector-agreed.mjs take their agents from AGENTS here.
 //
 // A connector's tools go ahead only on its own server, and only once the person has agreed in the session. The first
@@ -22,6 +24,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { argv, env, stdin, stdout } from "node:process";
 import { saveSessionFolders } from "../mcp/lib/code.mjs";
+import { setupOpen } from "../mcp/lib/setup-marker.mjs";
 import { fileURLToPath } from "node:url";
 
 // The okb server's tools, as Claude Code names a plugin's server: plugin_<plugin>_<server>.
@@ -30,9 +33,9 @@ export const OKB = ["whoami", "rpc", "call_function", "upload_file", "list_files
   "draw_graph", "draw_search", "draw_board", "draw_state_machine", "state_machine_payload", "draw_reference", "draw_sop", "report_page", "print_pdf",
   "embed_pictures", "check_text", "update_plugins", "check_plugins", "copy_to_agent_folder", "create_workbook", "edit_workbook", "copy_samples", "run_code",
   "invite_person"];
-// The okb tools only the database admin uses: invite_person, which adds a person through the okb-invite hosted function.
-// call_function naming okb-invite is the same call, and is the database admin's alone too.
-export const ADMIN_ONLY = { tools: ["invite_person"], functions: ["okb-invite"], agent: "real-agent:database-admin" };
+// The okb tools only the business analyst, the administrators' agent, uses: invite_person, which adds a person through the
+// okb-invite hosted function. call_function naming okb-invite is the same call, and is the business analyst's alone too.
+export const ADMIN_ONLY = { tools: ["invite_person"], functions: ["okb-invite"], agent: "business-analyst:business-analyst" };
 
 // Claude in Chrome's server, the same in a terminal and in the desktop app, and its tools that open and read a page.
 // Its tools that click, type, fill a form, run a script or upload a file are refused.
@@ -110,10 +113,11 @@ export function connectorState(session, dir = tmpdir()) {
 }
 
 // The agent_type Claude Code gives each agent, and what its refusals call it.
-// The database operator alone uses the person's connectors, as decision 2.33 gives it.
+// The database operator alone uses the person's connectors, as decision 2.33 gives it. The business analyst is held only
+// once setup has finished in the session's folder.
 export const AGENTS = {
   "real-agent:database-operator": { name: "database operator", connectors: true },
-  "real-agent:database-admin": { name: "database admin", connectors: false },
+  "business-analyst:business-analyst": { name: "business analyst", connectors: false, setup: true },
 };
 
 // The built-in tools both agents use. Any other, such as one a later Claude Code adds, is refused. Read, Glob and Grep
@@ -177,12 +181,14 @@ export function searchAllowed(tool, input, added = []) {
   return inside(input?.path, added, true);
 }
 
-/** Whether the agent may call the tool, with the call's input: true for any agent but these two; for them, only their own
- * tools, invite_person and call_function naming okb-invite for the database admin alone, and a connector's
+/** Whether the agent may call the tool, with the call's input and the session's folder: true for any agent but these two,
+ * and for the business analyst while setup is under way in the folder; otherwise only their own
+ * tools, invite_person and call_function naming okb-invite for the business analyst alone, and a connector's
  * tools on its own server, given the desktop ids the session has marked. A connector's tool still needs the person's
  * agreement in the session, which the hook asks for. */
-export function allowed(agentType, toolName, marked = {}, input = {}) {
+export function allowed(agentType, toolName, marked = {}, input = {}, folder = null) {
   if (!AGENTS[agentType]) return true;
+  if (AGENTS[agentType].setup && setupOpen(folder)) return true;
   if (!String(toolName).startsWith("mcp__")) return BUILT_IN.includes(String(toolName));
   const [, server = "", ...rest] = String(toolName).split("__");
   const tool = rest.join("__");
@@ -204,6 +210,10 @@ if (argv[1] && real(fileURLToPath(import.meta.url)) === real(argv[1])) {
     try { call = JSON.parse(text); } catch { deny("The okb plugin's agent-tools hook could not read the tool call."); }
     const tool = String(call?.tool_name ?? "");
     const who = AGENTS[call?.agent_type]?.name;
+    // The session's folder, as Claude Code gives it.
+    const folder = typeof call?.cwd === "string" && call.cwd ? call.cwd : null;
+    // While setup is under way in the folder, the business analyst's every call goes ahead.
+    if (AGENTS[call?.agent_type]?.setup && setupOpen(folder)) process.exit(0);
     // A skill's own file is read with no look at the transcript.
     if (who && tool === "Read" && readAllowed(call?.tool_input?.file_path)) process.exit(0);
     if (who && (["Read", "Glob", "Grep"].includes(tool) || tool === `mcp__${SERVER}__copy_to_agent_folder`)) {
@@ -223,12 +233,12 @@ if (argv[1] && real(fileURLToPath(import.meta.url)) === real(argv[1])) {
       for (const key of marks) state.marked[key] = [...(state.marked[key] ?? []), server];
       if (marks.length) state.save({ marked: state.marked });
     }
-    if (!allowed(call?.agent_type ?? "", tool, state?.marked, call?.tool_input)) {
+    if (!allowed(call?.agent_type ?? "", tool, state?.marked, call?.tool_input, folder)) {
       const other = DESKTOP_ID.test(server) ? Object.values(CONNECTORS).find(c => c.has(name)) : null;
       const adminOnly = server === SERVER && (ADMIN_ONLY.tools.includes(name) || name === "call_function");
       deny(other
         ? `The ${who} uses ${name} only on ${other.label}. Use one of ${other.label}'s own tools on it first, so the hook knows ${server} is ${other.label}.`
-        : adminOnly ? `The ${who} adds no one: inviting a person is the database admin's, @real-agent:database-admin.`
+        : adminOnly ? `The ${who} adds no one: inviting a person is your administrator's, with their business analyst, @business-analyst:business-analyst.`
         : `The ${who} does not use ${tool}.`);
     }
     if (AGENTS[call?.agent_type] && tool === `mcp__${CHROME}__navigate` && !chromeUrlAllowed(call?.tool_input?.url))

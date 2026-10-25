@@ -1,4 +1,4 @@
-// Keeps the database operator, the database admin and the business analyst to one issue in each reply. Runs as a
+// Keeps the database operator and the business analyst to one issue in each reply. Runs as a
 // Stop hook, with the hook's input on stdin as Claude Code gives it. For those agents, it counts the sentences
 // ending in a question mark in the reply's own prose: outside fenced code, block quotes and table rows, so a quoted
 // reply, a drafted message or a table of records is not counted. More than one, with `stop_hook_active` false, sends
@@ -11,11 +11,11 @@ import { fileURLToPath } from "node:url";
 import { AGENTS } from "./agent-tools.mjs";
 import { readSession } from "./session-copy.mjs";
 
-// The business analyst's agent_type. agent-tools.mjs has no tools for it: it sets OKB up with the Supabase connector.
+// The business analyst's agent_type, which agent-tools.mjs holds once setup has finished in its folder.
 export const ANALYST = "business-analyst:business-analyst";
 
 /** The agents the hook keeps to one issue. */
-export const KEPT = [...Object.keys(AGENTS), ANALYST];
+export const KEPT = [...new Set([...Object.keys(AGENTS), ANALYST])];
 
 export const REASON = "Your reply asks more than one question. Ask the first one only, and stop.";
 

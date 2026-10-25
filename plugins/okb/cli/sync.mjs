@@ -16,7 +16,9 @@
 // as a git source with a file:// URL, in place of Real Agent's public copy. It runs
 // `claude plugin marketplace update real-agent`, and `claude plugin update` for each plugin installed
 // from it, and prints each one's old and new version, and each plugin of the release not installed.
-// It then prints, once, each old upload folder holding files, with the folder to move them into.
+// It then prints, once, each old upload folder holding files, with the folder to move them into. A folder whose agent
+// setting names the database admin, which the business analyst replaced, is moved to the business analyst, whose
+// plugin is installed when it is not.
 // It exits 0 when every step worked, or when the Plugins scope shows the person no release yet, and 1
 // when a step failed.
 import process from "node:process";
@@ -466,6 +468,36 @@ export function uploadFolderNotices(configDir, home = homedir()) {
   return lines;
 }
 
+// The agent the business analyst replaced, as an administrator's folder may still name it, and its replacement.
+export const OLD_ADMIN_AGENT = "real-agent:database-admin";
+export const ADMIN_AGENT = "business-analyst:business-analyst";
+
+/**
+ * Moves each folder in the home folder, or in a folder in it, whose .claude/settings.json names the database admin, to
+ * the business analyst, keeping every other setting, and installs the business-analyst plugin when it is not installed.
+ * Returns one line for each folder moved, and one for an install that failed.
+ */
+export function moveAdminFolders(home = homedir(), run = claude) {
+  const lines = [];
+  for (const folder of [home, ...homeFolders(home)]) {
+    const file = join(folder, ".claude", "settings.json");
+    let settings;
+    try { settings = JSON.parse(readFileSync(file, "utf8")); } catch { continue; }
+    if (!settings || typeof settings !== "object" || Array.isArray(settings) || settings.agent !== OLD_ADMIN_AGENT) continue;
+    writeFileSync(file, `${JSON.stringify({ ...settings, agent: ADMIN_AGENT }, null, 2)}\n`);
+    lines.push(`${folder} now works with your business analyst, ${ADMIN_AGENT}, which does all the database admin did.`);
+  }
+  if (!lines.length) return lines;
+  let installed = [];
+  try { installed = JSON.parse(run(["plugin", "list", "--json"]).stdout); } catch { installed = []; }
+  const id = `${ADMIN_AGENT.split(":")[0]}@${MARKETPLACE_NAME}`;
+  if (!(Array.isArray(installed) ? installed : []).some(p => p?.id === id)) {
+    const ran = run(["plugin", "install", id]);
+    if (ran.error || ran.status !== 0) lines.push(`${id} could not be installed. Claude Code said: ${lastLine(ran)}. Install it with: claude plugin install ${id}`);
+  }
+  return lines;
+}
+
 /**
  * The whole of okb sync. `say` prints a line. `run` runs a claude command, `open` opens the sign-in.
  * Returns the exit code: 0 when every step worked or no release is there yet, 1 when a step failed.
@@ -521,6 +553,7 @@ export async function runSync(argv, { cwd = process.cwd(), home = homedir(), say
   for (const line of plugins.lines) say(line);
   if (plugins.lines.length) say("Start a new Code session to use the new versions.");
   for (const line of uploadFolderNotices(configDir, home)) say(line);
+  for (const line of moveAdminFolders(home, run)) say(line);
   const mismatch = await nodeLine(local);
   if (mismatch) say(mismatch);
   if (synced.steppedOut) say(backInto(local));

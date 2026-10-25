@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "real-agent",
-      "description": "Two agents every firm gets with Real Agent, for its Real Agent knowledge base, the organisational knowledge base (OKB): the database operator, for every member of staff, and the database admin, for the firm's administrator.",
+      "description": "The database operator, every member of staff's agent for their firm's Real Agent knowledge base, the organisational knowledge base (OKB), with the skills every firm gets: adding staff, approving a model, getting started, updating plugins and support.",
       "source": "./plugins/real-agent"
     },
     {
@@ -20,7 +20,7 @@
     },
     {
       "name": "business-analyst",
-      "description": "Sets up Real Agent for a firm: its Real Agent knowledge base, the organisational knowledge base (OKB), in its own Supabase project. Then interviews its people about their routines, one routine at a time, and saves each confirmed routine in the knowledge base as a model of how the work is done today.",
+      "description": "The business analyst, the agent of a firm's owner and administrators. It sets up Real Agent for the firm: its Real Agent knowledge base, the organisational knowledge base (OKB), in its own Supabase project. Then it keeps the firm's scopes, staff and grants, and interviews its people about their routines, saving each confirmed routine as a model of how the work is done today.",
       "source": "./plugins/business-analyst"
     }
   ]
