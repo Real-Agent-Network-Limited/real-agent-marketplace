@@ -8,7 +8,7 @@
 -- okb_setup.staff_code, becomes the same actor with no sign-in yet, with okb_private.provision_invited_actor, and the
 -- template's grants, and their code's SHA-256 becomes their open invitation in okb_private.invitation, which okb-join
 -- spends; okb-join makes their sessions scope. Then each loose end okb-setup listed in okb_setup.open_task, such as
--- sending Real Agent its code or the Developer invitation, is saved as an open task in Administration, assigned to the
+-- sending Real Agent a code its website did not take, is saved as an open task in Administration, assigned to the
 -- owner, as the owner, in position order, each due a week on. One transaction: a failure keeps nothing.
 do $$
 declare

@@ -15,16 +15,17 @@
 // admin API; an Auth user an earlier attempt made for the same email gets the new password instead. For each of Real
 // Agent's staff real-agent.ts lists, it reuses the Auth user Auth holds for the email, or else makes a one-time
 // invitation code, as okb-invite makes one: three groups of four from an alphabet with no look-alike letters or digits,
-// valid for 7 days. It sends no email. It records each person with an Auth user in okb_setup.person, and each code's
-// SHA-256 alone in okb_setup.staff_code, for first-administrator.sql, which makes the actors and the invitations okb-join
-// spends. It records each loose end in okb_setup.open_task, which first-administrator.sql saves as an open task for the
-// owner: the Developer invitation to DEVELOPER_EMAIL, "Send Real Agent its invitation code" for each code, and "Add
-// Real Agent as a user" when the staff list is empty. It spends the sign-in code. Response: { ok: true, email,
-// real_agent, real_agent_codes: [{ name, email, code, expires_at }], open_tasks } or { ok: false, problem }. Each code is
-// in this answer once, and the sign-in saves it for the business analyst's summary. The password is never stored,
-// logged or returned.
+// valid for 7 days. It sends no email. It sends each code to Real Agent's website, ACCESS_URL, as JSON { project_url,
+// email, code, expires }, with a 5-second limit: the owner's agreement to setup covers this. It records each person with
+// an Auth user in okb_setup.person, and each code's SHA-256 alone in okb_setup.staff_code, for first-administrator.sql,
+// which makes the actors and the invitations okb-join spends. It records each loose end in okb_setup.open_task, which
+// first-administrator.sql saves as an open task for the owner: "Send Real Agent its invitation code" for each code the
+// website did not take, and "Add Real Agent as a user" when the staff list is empty. It spends the sign-in code.
+// Response: { ok: true, email, real_agent, real_agent_codes: [{ name, email, code, expires_at }], open_tasks } or
+// { ok: false, problem }. real_agent_codes holds only the codes the website did not take, each once, and the sign-in
+// saves them for the business analyst's summary. The password is never stored, logged or returned.
 import postgres from "npm:postgres@3.4.9";
-import { DEVELOPER_EMAIL, STAFF } from "./real-agent.ts";
+import { ACCESS_URL, STAFF } from "./real-agent.ts";
 
 const PROJECT = Deno.env.get("SUPABASE_URL")!;
 const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -61,13 +62,8 @@ function newCode(): string {
 const codeHash = (code: string) => sha256(new TextEncoder().encode(code.toUpperCase().replace(/[\s-]+/g, "")));
 
 /** The open tasks setup leaves the owner, as first-administrator.sql saves them, titled as okb-invite and the database admin find them. */
-export function openTasks(staff: { name: string; email: string }[], coded: { name: string; email: string; expires_at: string }[], developer: string | null) {
+export function openTasks(staff: { name: string; email: string }[], coded: { name: string; email: string; expires_at: string }[]) {
   const tasks: { title: string; description: string; completion_requirements: string }[] = [];
-  if (developer) tasks.push({
-    title: `Invite ${developer} as a Developer in Supabase`,
-    description: `In Supabase, open your organisation's Team page, choose Invite member, and invite ${developer} as a Developer, so Real Agent can apply updates. A Developer can change the database and read its keys, but not your billing, members or settings.`,
-    completion_requirements: "The administrator says the invitation is sent.",
-  });
   if (!staff.length) tasks.push({
     title: "Add Real Agent as a user",
     description: "Real Agent's staff are not in your knowledge base yet. Ask your database admin to add Real Agent once Real Agent gives you its email address.",
@@ -79,6 +75,21 @@ export function openTasks(staff: { name: string; email: string }[], coded: { nam
     completion_requirements: `${c.name} (Real Agent) has signed in with the code.`,
   });
   return tasks;
+}
+
+/** Sends one code to Real Agent's website. True only when it answers 2xx within 5 seconds. */
+async function deliver(c: { email: string; code: string; expires_at: string }): Promise<boolean> {
+  if (!ACCESS_URL) return false;
+  try {
+    const res = await fetch(ACCESS_URL, {
+      method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(5000),
+      body: JSON.stringify({ project_url: PROJECT, email: c.email, code: c.code, expires: c.expires_at }),
+    });
+    await res.body?.cancel();
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
 
 /** The Auth user for an email: made, or, when an earlier attempt made it, given this password. Returns its id. */
@@ -134,7 +145,10 @@ async function owner(db: any, body: Record<string, unknown>): Promise<Response> 
     const code = newCode();
     coded.push({ name: one.name, email: address, code, sha256: await codeHash(code), expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString() });
   }
-  const tasks = openTasks(STAFF, coded, DEVELOPER_EMAIL);
+  // Each code Real Agent's website takes needs nothing from the owner. Any other goes in the summary and an open task.
+  const unsent: typeof coded = [];
+  for (const c of coded) if (!await deliver(c)) unsent.push(c);
+  const tasks = openTasks(STAFF, unsent);
   // deno-lint-ignore no-explicit-any
   await db.begin(async (tx: any) => {
     await tx`delete from okb_setup.person`;
@@ -147,7 +161,7 @@ async function owner(db: any, body: Record<string, unknown>): Promise<Response> 
     await tx`delete from okb_setup.owner_code`;
   });
   return json(200, { ok: true, email, real_agent: [...people.filter(p => p.role === "real_agent").map(p => p.name), ...coded.map(c => c.name)],
-    real_agent_codes: coded.map(c => ({ name: `${c.name} (Real Agent)`, email: c.email, code: c.code, expires_at: c.expires_at })), open_tasks: tasks.map(t => t.title) });
+    real_agent_codes: unsent.map(c => ({ name: `${c.name} (Real Agent)`, email: c.email, code: c.code, expires_at: c.expires_at })), open_tasks: tasks.map(t => t.title) });
 }
 
 Deno.serve(async (req) => {
