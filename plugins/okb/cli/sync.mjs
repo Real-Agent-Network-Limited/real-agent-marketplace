@@ -518,8 +518,6 @@ export async function runSync(argv, { cwd = process.cwd(), home = homedir(), say
     return 1;
   }
   const { from, to, failed, warning } = synced;
-  // A folder still set to the database admin moves to the business analyst on every run, release or none.
-  for (const line of moveAdminFolders(home, run)) say(line);
   if (warning) say(`The copy is updated, but its earlier version stays behind. ${warning}`);
   for (const [name, problems] of failed) say(`Release ${name} is incomplete in OKB, and was passed over:\n${problems.map(p => `  ${p}`).join("\n")}`);
   if (!to && !from && failed.length) {
@@ -528,6 +526,8 @@ export async function runSync(argv, { cwd = process.cwd(), home = homedir(), say
   }
   if (!to && !from) {
     say(`OKB's Plugins scope shows ${session.email} no release yet, so your plugins stay as installed from Real Agent's public marketplace. If Real Agent has published your firm's plugins, ask your administrator for read in the Plugins scope.`);
+    // With no release, a folder still set to the database admin moves to the business analyst all the same.
+    for (const line of moveAdminFolders(home, run)) say(line);
     return 0;
   }
   say(to ? `Your copy in ${local} is now release ${to}${from ? `, from ${from}` : ""}.` : `Your copy in ${local} is up to date, at release ${from}.`);
@@ -555,6 +555,7 @@ export async function runSync(argv, { cwd = process.cwd(), home = homedir(), say
   for (const line of plugins.lines) say(line);
   if (plugins.lines.length) say("Start a new Code session to use the new versions.");
   for (const line of uploadFolderNotices(configDir, home)) say(line);
+  for (const line of moveAdminFolders(home, run)) say(line);
   const mismatch = await nodeLine(local);
   if (mismatch) say(mismatch);
   if (synced.steppedOut) say(backInto(local));
