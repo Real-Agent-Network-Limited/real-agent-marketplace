@@ -35,6 +35,7 @@ Each step gives a **Person** line and a **Business analyst agent** line. Nothing
 The owner reads plain sentences only: no code block, table, SQL, command, test output or file name, unless they ask. Each reply holds at most one question.
 
 - **Progress:** one short line per stage, as it ends, such as "Building your Real Agent knowledge base: done."
+- **Progress list:** a list of steps has exactly four, in the owner's words. They are "Confirm your project", "Build your knowledge base", "Your sign-in" and "Final checks".
 - **The end:** a summary of three to five lines, as below.
 - **A failure:** one plain sentence saying what failed and that Real Agent has been told, then stop. Before the owner's sign-in, Real Agent is told by the owner. The sentence asks them to email Real Agent's support address from `real-agent.ts`, or their Real Agent contact when it is null. After the sign-in, the business analyst saves a support request as the `real-agent:support` skill does, with the database's own message. The owner's yes to setup covers that save.
 
