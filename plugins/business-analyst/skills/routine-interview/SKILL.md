@@ -1,13 +1,17 @@
 ---
 name: routine-interview
-description: Use when a person describes one of the firm's routines, their own or a colleague's, to write it down in OKB. Interviews one person, one question per reply, and saves each statement as evidence. Keeps disagreements and handovers, proposes new glossary terms, and saves the confirmed routine as a drawn model of the current state. It runs in one of three modes: human only, AI guided or human directed.
+description: Use when a person describes one of the firm's workflows, their own or a colleague's, to write it down in OKB. Interviews one person, one question per reply, and saves each statement as evidence. Keeps disagreements and handovers, proposes new glossary terms, and saves the confirmed workflow, with its routines, as a drawn model of the current state. It runs in one of three modes: human only, AI guided or human directed.
 ---
 
 # Routine interview
 
-The business analyst, `@business-analyst:business-analyst`, interviews one person about one routine at a time. The routine may be the person's own or a colleague's, with the colleague beside them. OKB is the firm's organisational knowledge base: the `okb` schema in the firm's own Supabase project. Each thing the person says is saved in OKB as evidence, in the Routines scope, `routines`. The routine they confirm is saved there as a model of the current state, linked to that evidence, and drawn as a state machine page. The interview writes down what happens today, and suggests no change.
+The business analyst, `@business-analyst:business-analyst`, interviews one person about one workflow at a time. The workflow may be the person's own or a colleague's, with the colleague beside them.
 
-The business analyst works signed in as the person running the interview, through the okb plugin's tools alone. That person is the firm's own member of staff, or a member of Real Agent's staff on a video call with them. The **speaker** is whoever describes the routine.
+A **workflow** is a whole piece of the firm's work as staff see it, such as taking a market appraisal through to a signed agreement. It is made of **routines**. A routine is one part of the workflow that starts from one trigger and ends in one outcome, such as booking the appraisal.
+
+OKB is the firm's organisational knowledge base: the `okb` schema in the firm's own Supabase project. Each thing the person says is saved in OKB as evidence, in the Routines scope, `routines`. The workflow they confirm is saved there as a model of the current state, with its routines. The model is linked to that evidence, and drawn as a state machine page. The interview writes down what happens today, and suggests no change.
+
+The business analyst works signed in as the person running the interview, through the okb plugin's tools alone. That person is the firm's own member of staff, or a member of Real Agent's staff on a video call with them. The **speaker** is whoever describes the workflow.
 
 This skill sets the order, the wording and the checks. It uses the `okb:records`, `okb:reference`, `okb:graph` and `okb:writing` skills. Every save is a task function from the `okb:records` skill's section 11, previewed first and then saved with `okb_save_version`, as its section 3 describes. A person without the business analyst makes each call with the `okb` command, as the `okb:actor` skill sets it up.
 
@@ -40,32 +44,32 @@ The interview starts only after the firm's setup has finished, as the `business-
 
 - **Person:** before writing anything down, asks the speaker the consent question below, and keeps their answer in their own words. Without the business analyst, saves it with `okb okb_add_record p_scope=routines p_kind=evidence p_title="<speaker>: consent to the routine interview" p_reason="Consent before the interview" p_fields.summary="<the question, and the speaker's answer>" p_fields.standing=stated p_fields.source_reference="<speaker>, routine interview" p_fields.source_date=<today> p_fields.limitations=none p_preview=true`, reads the change, then runs it again without `p_preview`.
 - **Business analyst agent:**
-  1. Opens with what it is there to do and the consent question, in a few plain sentences. "Hi, I'm here to help you write down how one of your routines really works, step by step. Before we start: I'm an AI, and an AI processes what you tell me. Named colleagues in the firm can read it, your name stays attached to it, and someone may check it over later. I save each thing you tell me as you say it. Is that all right?" is the length and the register.
+  1. Opens with what it is there to do and the consent question, in a few plain sentences. "Hi, I'm here to help you write down how one piece of your work really runs, step by step. Before we start: I'm an AI, and an AI processes what you tell me. Named colleagues in the firm can read it, your name stays attached to it, and someone may check it over later. I save each thing you tell me as you say it. Is that all right?" is the length and the register.
   2. Asks it once, as a question the speaker can say yes to.
   3. With a yes, saves the consent as an evidence record, with the fields in the Person line. It calls `okb_add_record` with `p_preview` true, then `okb_save_version` with the preview's `request` and `authorisation_id`. The speaker's yes is their agreement to this save, and to each statement saved in sections 3 to 5. The business analyst asks no other question before those saves.
   4. With a no, saves nothing, thanks them, and stops.
   5. A second speaker gives their own consent, the same way, before their first statement is saved.
   6. When a speaker withdraws their consent, saves nothing more of theirs. Saves the withdrawal as an evidence record titled `<speaker>: consent withdrawn`. Tells them the firm's administrator decides what happens to what is already saved. Then stops.
 
-**AI guided:** the business analyst gives the person the saved consent record, and waits for their approval before the first question about the routine.
+**AI guided:** the business analyst gives the person the saved consent record, and waits for their approval before the first question about the workflow.
 
-## 3. The routine
+## 3. The workflow
 
-- **Person:** says who they are and their role, and names the routine. Says which part of the business it belongs to, whether they carry it out today or intend to run it, and what starts it. Without the business analyst, saves each answer as section 4's Person line gives.
+- **Person:** says who they are and their role, and names the workflow. Says which part of the business it belongs to, whether they carry it out today or intend to run it, and what starts it. Without the business analyst, saves each answer as section 4's Person line gives.
 - **Business analyst agent:** asks, one question per reply:
   1. The speaker's name and role.
-  2. Which routine. It settles on exactly one, with a short name in lowercase words joined by hyphens, such as `valuation-booking`. Several routines may be open at once. Each statement belongs to one of them.
-  3. Which part of the business the routine belongs to. The answer is the routine's `operation`.
-  4. Whether they carry the routine out today or intend to run it. The answer is the routine's `basis`: `performed` or `intended`. It is asked in their words, and never read off what they have said.
-  5. What starts the routine, and how often.
+  2. Which workflow. It settles on exactly one, with a short name in lowercase words joined by hyphens, such as `valuation-booking`. Several workflows may be open at once. Each statement belongs to one of them.
+  3. Which part of the business the workflow belongs to. The answer is the workflow's `operation`.
+  4. Whether they carry the workflow out today or intend to run it. The answer is the workflow's `basis`: `performed` or `intended`. It is asked in their words, and never read off what they have said.
+  5. What starts the workflow, and how often.
 
-  It saves the part of the business and the basis as the routine's first evidence record, titled `<routine>: part of the business and basis`, before any other statement about the routine.
+  It saves the part of the business and the basis as the workflow's first evidence record, titled `<workflow>: part of the business and basis`, before any other statement about the workflow.
 
-**AI guided:** the business analyst gives the person the routine's name, part of the business, basis and start, and waits for their approval.
+**AI guided:** the business analyst gives the person the workflow's name, part of the business, basis and start, and waits for their approval.
 
 ## 4. A real, recent example
 
-- **Person:** describes the last time the routine ran, step by step. Without the business analyst, saves each statement with `okb okb_add_record p_scope=routines p_kind=evidence p_title="<routine>: <what it covers>" p_reason="Routine interview" p_fields.summary="<what was said>" p_fields.standing=stated p_fields.source_reference="<speaker>, routine interview, <routine>" p_fields.source_date=<today> p_fields.limitations="<what they were unsure of, or none>" p_preview=true`, then again without `p_preview`.
+- **Person:** describes the last time the workflow ran, step by step. Without the business analyst, saves each statement with `okb okb_add_record p_scope=routines p_kind=evidence p_title="<workflow>: <what it covers>" p_reason="Routine interview" p_fields.summary="<what was said>" p_fields.standing=stated p_fields.source_reference="<speaker>, routine interview, <workflow>" p_fields.source_date=<today> p_fields.limitations="<what they were unsure of, or none>" p_preview=true`, then again without `p_preview`.
 - **Business analyst agent:** leads the interview by the rules below, and saves each statement as it is said.
 
 How it asks:
@@ -77,20 +81,20 @@ How it asks:
 - For each step, it finds out who does it and what they do, and which tool or system they use. It asks what they need before they can start, what they produce, and roughly how long it takes.
 - It follows every handover: "Who gets it next, and how do they know it's their turn?"
 - It asks about the exceptions: "What happens when it goes wrong, something is missing, or it's urgent?"
-- It asks how often the routine runs, how long it takes end to end, and where it gets stuck or redone. It keeps only the numbers the speaker gave.
+- It asks how often the workflow runs, how long it takes end to end, and where it gets stuck or redone. It keeps only the numbers the speaker gave.
 - A step the speaker does not do themselves is marked second-hand, with who would know for sure.
 - It keeps the speaker's own words for anything important, as short quotes.
-- It asks at most 25 questions in a sitting. With more to cover, it names the next topic only, and offers to carry on later. A later sitting first reads the routine's evidence with `okb_find_records`, and carries on from it.
+- It asks at most 25 questions in a sitting. With more to cover, it names the next topic only, and offers to carry on later. A later sitting first reads the workflow's evidence with `okb_find_records`, and carries on from it.
 - It refers to people by name or role, and uses "they" unless the speaker has said otherwise.
 - It never fills a gap with what is usual for that kind of business.
 - It never uses these words with the speaker: `operation`, `participant`, `package`, `contribution`, `attribution`, `evidence`, `install`, `session`, `transcript`, `directory`, `configuration`, `platform` and `audit stage`.
 
 Each statement is an `evidence` record:
 
-- `title`: the routine's name and what the statement covers, such as `valuation-booking: confirming the appointment`.
+- `title`: the workflow's name and what the statement covers, such as `valuation-booking: confirming the appointment`.
 - `summary`: what the speaker said, with their own words in quotes where it matters.
 - `standing`: `stated`.
-- `source_reference`: the speaker's name, `routine interview` and the routine's name.
+- `source_reference`: the speaker's name, `routine interview` and the workflow's name.
 - `source_date`: today.
 - `limitations`: what they were unsure of, `second-hand, <who would know>` for a step they do not do themselves, or `none`.
 
@@ -100,19 +104,19 @@ The business analyst saves each statement with `okb_add_record`, with `p_preview
 
 ## 5. Disagreements, files and boundaries
 
-- **Person:** says when two accounts differ, gives any file, and names any routine that feeds this one or that it feeds. Without the business analyst, saves each record as section 4 gives, and links a disagreement with `okb okb_link p_record="<disagreement>" p_target="<account>" p_relation=supports p_reason="<why>" p_preview=true`, then again without `p_preview`.
+- **Person:** says when two accounts differ, gives any file, and names any workflow that feeds this one or that it feeds. Without the business analyst, saves each record as section 4 gives, and links a disagreement with `okb okb_link p_record="<disagreement>" p_target="<account>" p_relation=supports p_reason="<why>" p_preview=true`, then again without `p_preview`.
 - **Business analyst agent:** follows the rules below.
 
-- **A disagreement** between two speakers, or between a speaker and a document, is said plainly, and the business analyst asks which is right. Each account is its own evidence record under its speaker's name. A third record, titled `<routine>: disagreement about <what>`, names both, with a `supports` link to each, made with `okb_link`. The business analyst never picks a version. A settled account is a new evidence record, with a `describes` link to the disagreement. An unsettled one stays, and the model carries both accounts.
+- **A disagreement** between two speakers, or between a speaker and a document, is said plainly, and the business analyst asks which is right. Each account is its own evidence record under its speaker's name. A third record, titled `<workflow>: disagreement about <what>`, names both, with a `supports` link to each, made with `okb_link`. The business analyst never picks a version. A settled account is a new evidence record, with a `describes` link to the disagreement. An unsettled one stays, and the model carries both accounts.
 - **A file or recording** the speaker gives is read with `read_file` from the agent folder. It is uploaded to `routines` with `upload_file` when they want it kept. Its evidence record names the file in `source_reference`, and carries `file_sha256` when the upload gives one.
 - **A machine transcript** of a recording is marked in `limitations` as `machine transcript of <file>`. It is kept apart from what a speaker said.
-- **A neighbouring routine**, one that feeds this one or that this one feeds, is outside it. The business analyst records only the handover, as stated: what passes, who owns each side, and what starts it. That is an evidence record titled `<routine>: boundary with <other routine>`. It stops there, and offers to interview the other routine separately.
+- **A neighbouring workflow**, one that feeds this one or that this one feeds, is outside it. The business analyst records only the handover, as stated: what passes, who owns each side, and what starts it. That is an evidence record titled `<workflow>: boundary with <other workflow>`. It stops there, and offers to interview the other workflow separately.
 
 **AI guided:** the business analyst gives the person each disagreement and boundary it saved, and waits for their approval.
 
 ## 6. New words for the glossary
 
-- **Person:** says what a word the glossary lacks means. Without the business analyst, reads the glossary with `okb okb_get_reference p_part=glossary`, then saves the word with `okb okb_save_term p_term="<word>" p_kind=term p_definition="<definition>" p_other_names='["<other name>"]' p_reason="Routine interview, <routine>" p_preview=true`, and again without `p_preview`.
+- **Person:** says what a word the glossary lacks means. Without the business analyst, reads the glossary with `okb okb_get_reference p_part=glossary`, then saves the word with `okb okb_save_term p_term="<word>" p_kind=term p_definition="<definition>" p_other_names='["<other name>"]' p_reason="Routine interview, <workflow>" p_preview=true`, and again without `p_preview`.
 - **Business analyst agent:**
   1. Reads the glossary with `okb_get_reference`, with `p_part` `glossary`, once a sitting, into a file in the agent folder with `result_file`.
   2. Checks each firm's word the speaker uses against each row's term and other names, in any case.
@@ -124,20 +128,20 @@ The business analyst saves each statement with `okb_add_record`, with `p_preview
 
 ## 7. Read-back and save
 
-- **Person:** hears the routine read back one step at a time, and corrects it. Without the business analyst, writes the routine as a model payload file in the agent folder, in the model format of the `okb:records` skill's section 3. Saves it with `okb okb_add_record p_scope=routines p_kind=model p_title="<routine>" p_reason="Confirmed in the routine interview" p_fields=@<routine>.payload.json p_preview=true`, and again without `p_preview`. Links each evidence record with `okb okb_link p_record="<routine>" p_target="<evidence record>" p_relation=supports p_reason="Confirmed in the routine interview"`. Draws it with `okb okb_get_record p_record_id=<record id> result_file=record.json`, then `okb draw_state_machine record_file=record.json page_file=<routine>.html`.
+- **Person:** hears the workflow read back one step at a time, and corrects it. Without the business analyst, writes the workflow as a model payload file in the agent folder, in the model format of the `okb:records` skill's section 3. Saves it with `okb okb_add_record p_scope=routines p_kind=model p_title="<workflow>" p_reason="Confirmed in the routine interview" p_fields=@<workflow>.payload.json p_preview=true`, and again without `p_preview`. Links each evidence record with `okb okb_link p_record="<workflow>" p_target="<evidence record>" p_relation=supports p_reason="Confirmed in the routine interview"`. Draws it with `okb okb_get_record p_record_id=<record id> result_file=record.json`, then `okb draw_state_machine record_file=record.json page_file=<workflow>.html`.
 - **Business analyst agent:**
   1. Reads the steps back one step per reply, in a plain sentence, in order. Each starts "Step 1 of N:", with the step's number and the number of steps. After each step, asks "Is that right?" and waits. Fixes what the speaker corrects, then gives the next step. It never puts two steps in one reply, and never puts the steps in a list.
-  2. After the last step is agreed, asks once: "Does that cover the whole routine, from start to finish?" Anything the speaker adds is asked about and saved as section 4 says, then read back one step per reply in the same way.
+  2. After the last step is agreed, asks once: "Does that cover the whole workflow, from start to finish?" Anything the speaker adds is asked about and saved as section 4 says, then read back one step per reply in the same way.
   3. When the speaker says it does, saves the model at once, with no other question. The speaker's agreement to each step, and their answer to that question, are the confirmation.
-  4. Writes the routine as a model payload in a new agent folder file, such as `<routine>.payload.json`. It uses the model format of the `okb:records` skill's section 3. `model_kind` is `observed_current`, and `source_status` is `stated, confirmed by <speaker>`. `description` names the part of the business, the basis and what starts the routine.
-  5. Builds the graph from the node and edge types in the `okb:graph` skill's "The state machine model". The `routine` node carries `operation` and `basis` in its attributes. Each step is an `activity` in order, with its number as `reference`, who does it, the tools and data it uses, and how long it takes. Every state, the start and each end included, has a `part_of` edge to the routine. A rule, an exception, a gap and each end are their own nodes. A neighbouring routine is a `related_machine` node at its handover. A disputed step carries each account in its attributes, under each speaker's name.
-  6. Calls `okb_add_record` with `p_scope` `routines`, `p_kind` `model`, the routine's name as `p_title`, `p_preview` true, and `file_args` `{"/p_fields": "<payload file>"}`. Sets the preview request's `links` to a `supports` link to each evidence version saved for the routine, each speaker's consent included. Then calls `okb_save_version` with that request, the preview's `authorisation_id`, and `result_file`.
+  4. Writes the workflow as a model payload in a new agent folder file, such as `<workflow>.payload.json`. It uses the model format of the `okb:records` skill's section 3. `model_kind` is `observed_current`, and `source_status` is `stated, confirmed by <speaker>`. `description` names the part of the business, the basis and what starts the workflow.
+  5. Builds the graph from the node and edge types in the `okb:graph` skill's "The state machine model". Each routine of the workflow is a `routine` node, from one trigger to one outcome as the speaker described it. Its id is its `reference`, such as `1`. A workflow the speaker described as one run from start to finish is one `routine` node. Each `routine` node carries `operation` and `basis` in its attributes. Each step is an `activity` in order, with its number as `reference`, who does it, the tools and data it uses, and how long it takes. Every state, the start and each end included, has a `part_of` edge to its routine. A rule, an exception, a gap and each end are their own nodes. A neighbouring workflow is a `related_machine` node at its handover. A disputed step carries each account in its attributes, under each speaker's name.
+  6. Calls `okb_add_record` with `p_scope` `routines`, `p_kind` `model`, the workflow's name as `p_title`, `p_preview` true, and `file_args` `{"/p_fields": "<payload file>"}`. Sets the preview request's `links` to a `supports` link to each evidence version saved for the workflow, each speaker's consent included. Then calls `okb_save_version` with that request, the preview's `authorisation_id`, and `result_file`.
   7. Draws the saved model, as the `okb:graph` skill's section 3 says: `okb_get_record` with `result_file`, then `draw_state_machine`. It checks the page, and gives the person the page's full path.
-  8. Tells the person the routine is saved, and asks the next question: another routine, or the end of the interview.
+  8. Tells the person the workflow is saved, and asks the next question: another workflow, or the end of the interview.
 
 Anything said after the save is a new version of the model, read back and saved the same way.
 
-**AI guided:** the read-back is the approval. The business analyst gives the person each step and waits for "Is that right?" to be answered, then asks "Does that cover the whole routine, from start to finish?" once. It saves the model as soon as the speaker says it does, and asks for no other approval.
+**AI guided:** the read-back is the approval. The business analyst gives the person each step and waits for "Is that right?" to be answered, then asks "Does that cover the whole workflow, from start to finish?" once. It saves the model as soon as the speaker says it does, and asks for no other approval.
 
 ## Problems
 
