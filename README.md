@@ -38,27 +38,24 @@ Before you type it, create a free account and a project at supabase.com, and con
 
 ### 2. Each member of staff, after setup
 
-Once setup has finished, the firm's administrator gives each member of staff three things:
+Once setup has finished, the firm's administrator adds each member of staff with their database admin. The administrator then gives the member of staff two things:
 
-- the email address their Real Agent login uses, and a first password, through the firm's password manager;
-- the project's address, such as `https://abcdefghijklmnopqrst.supabase.co`;
-- the project's publishable key.
+- a one-time invitation code, such as `K7QM-3XRD-W9PA`, which works once, for 7 days;
+- the command for their computer, with their email, the project's address and its publishable key filled in.
 
-The member of staff runs the command for their computer, with those values in place of the angle brackets.
-
-On macOS:
+The command, with those values in place of the angle brackets, on macOS:
 
 ```sh
-cd ~ && curl -fsSLO https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.sh && bash install.sh Real-Agent-Network-Limited/real-agent-marketplace --email <email> --url <project address> --key <publishable key> --new-password
+cd ~ && curl -fsSLO https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.sh && bash install.sh Real-Agent-Network-Limited/real-agent-marketplace --email <email> --url <project address> --key <publishable key> --join
 ```
 
 On Windows:
 
 ```powershell
-cd ~; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.ps1 -OutFile install.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 Real-Agent-Network-Limited/real-agent-marketplace --email <email> --url <project address> --key <publishable key> --new-password
+cd ~; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.ps1 -OutFile install.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 Real-Agent-Network-Limited/real-agent-marketplace --email <email> --url <project address> --key <publishable key> --join
 ```
 
-The script installs the programs and the plugins, then sets up the folder `real-agent` in your home folder with `okb setup`. The sign-in asks for the first password you were given. Then it asks for a new password of your own, twice. Each password stays hidden as you type it. Save the new password in your password manager. If you type the first password again as the new one, the first password stays.
+The script installs the programs and the plugins, then sets up the folder `real-agent` in your home folder with `okb setup`. The sign-in asks for your invitation code. Then it asks you to choose a password, twice. The password stays hidden as you type it, and goes only to your firm's Supabase project. Save it in your password manager. A wrong code, or one that has run out, is refused, and after five wrong tries the code stops working. Ask your administrator for a new one.
 
 The last step, `okb sync`, installs your firm's own release of the plugins from your firm's knowledge base. Until Real Agent publishes the firm's first release, it says there is no release yet, and the plugins from this marketplace stay.
 

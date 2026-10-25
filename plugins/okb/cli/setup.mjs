@@ -6,7 +6,11 @@
 // folder, which installs the firm's own release of its plugins from OKB in place of the public copy.
 //
 //   node okb.mjs setup [--folder <folder>] --email <email> [--url <project URL> --key <publishable key>] [--agent <plugin>:<agent>] [--new-password]
+//   node okb.mjs setup [--folder <folder>] --email <email> --url <project URL> --key <publishable key> --join [--agent <plugin>:<agent>]
 //   node okb.mjs setup --owner [--folder <folder>]
+//
+// --join is the first sign-in of a person their administrator added with a one-time invitation code: the sign-in asks
+// the code and the password they choose, twice, in place of a password someone gave them. Every other step is the same.
 //
 // The folder is ~/real-agent unless --folder names another. A folder set up before under another name, such as
 // ~/okb, keeps working: run setup again with --folder naming it.
@@ -41,6 +45,7 @@ export const DEFAULT_FOLDER = "real-agent";
 export const OWNER_PHRASE = "Set up Real Agent";
 
 export const SETUP_USAGE = `Usage: node okb.mjs setup [--folder <folder>] --email <email> [--url <project URL> --key <publishable key>] [--agent <plugin>:<agent>] [--new-password]
+       node okb.mjs setup [--folder <folder>] --email <email> --url <project URL> --key <publishable key> --join [--agent <plugin>:<agent>]
        node okb.mjs setup --owner [--folder <folder>]
 
 setup sets up a folder for one person in their firm's OKB: the folder, ~/${DEFAULT_FOLDER} unless --folder
@@ -51,6 +56,9 @@ release of its plugins from OKB's Plugins scope in place of the public copy. --u
 from the Supabase dashboard's Connect button; without them the sign-in asks. --new-password replaces
 the first password.
 
+--join is for a person their administrator added with a one-time invitation code. The sign-in asks for the code
+and a password you choose, twice, and needs --url and --key.
+
 --owner is for the firm's owner, before the firm has a Supabase project. It makes the folder, names the
 business analyst, ${OWNER_AGENT}, as the folder's agent, and installs its plugin. It neither signs in
 nor runs okb sync. The owner then types "${OWNER_PHRASE}" in a session opened on the folder.`;
@@ -59,11 +67,12 @@ const VALUED = ["--email", "--folder", "--agent", "--url", "--key"];
 
 /** The command line's options. */
 export function parseSetup(argv) {
-  const out = { newPassword: false, owner: false };
+  const out = { newPassword: false, owner: false, join: false };
   for (let i = 0; i < argv.length; i++) {
     const word = argv[i];
     if (word === "--new-password") out.newPassword = true;
     else if (word === "--owner") out.owner = true;
+    else if (word === "--join") out.join = true;
     else if (VALUED.includes(word)) {
       if (argv[i + 1] === undefined || argv[i + 1].startsWith("--")) throw new Error(`${word} needs a value.`);
       out[word.slice(2)] = argv[++i];
@@ -72,6 +81,7 @@ export function parseSetup(argv) {
   if (out.owner) {
     const other = ["email", "url", "key", "agent"].filter(name => out[name] !== undefined).map(name => `--${name}`);
     if (out.newPassword) other.push("--new-password");
+    if (out.join) other.push("--join");
     if (other.length) throw new Error(`--owner takes only --folder, since there is no project to sign in to yet: leave out ${other.join(", ")}.`);
     out.agent = OWNER_AGENT;
     return out;
@@ -80,6 +90,8 @@ export function parseSetup(argv) {
   if (!accountEmail(out.email)) throw new Error(`${out.email} is not an email address.`);
   out.email = accountEmail(out.email);
   if ((out.url === undefined) !== (out.key === undefined)) throw new Error("--url and --key go together.");
+  if (out.join && out.url === undefined) throw new Error("--join needs --url and --key, the project's address and publishable key.");
+  if (out.join && out.newPassword) throw new Error("--join and --new-password do not go together: with --join you choose your password.");
   out.agent ??= DEFAULT_AGENT;
   return out;
 }
@@ -202,7 +214,7 @@ export function setup(argv, { home = homedir(), signInArgs, signInPath, syncArgs
       say(`${folder} is already signed in as ${o.email}.`);
     } else {
       const where = o.url === undefined ? [] : ["--url", o.url, "--key", o.key];
-      runSignIn(signInPath, signInArgs([...(o.newPassword ? ["--new-password"] : []), ...where, "--folder", folder, "--email", o.email], o.email).slice(1), say);
+      runSignIn(signInPath, signInArgs([...(o.newPassword ? ["--new-password"] : []), ...(o.join ? ["--join"] : []), ...where, "--folder", folder, "--email", o.email], o.email).slice(1), say);
     }
     runSync(syncArgs, folder, say);
     say(`Done. Start a new Code session on ${folder}, and type: who am I?`);

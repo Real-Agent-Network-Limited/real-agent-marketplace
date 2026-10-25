@@ -29,7 +29,7 @@
 set -u
 
 USAGE="Usage: bash install.sh <marketplace> --owner [--folder <folder>]
-       bash install.sh <marketplace> --email <email> [--folder <folder>] [--url <project URL> --key <publishable key>] [--agent <plugin>:<agent>] [--new-password]"
+       bash install.sh <marketplace> --email <email> [--folder <folder>] [--url <project URL> --key <publishable key>] [--agent <plugin>:<agent>] [--new-password | --join]"
 if [ "$(uname -s)" != "Darwin" ]; then echo "install.sh is for macOS. On Windows, run install.ps1."; exit 2; fi
 MARKETPLACE="${1:-}"
 case "$MARKETPLACE" in ""|-*) echo "$USAGE"; exit 2 ;; esac

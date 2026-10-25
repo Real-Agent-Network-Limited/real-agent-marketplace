@@ -30,6 +30,24 @@ const folderPath = folder => { if (!folder) return null; try { return realpathSy
 const MAX_COPY_BYTES = 50 * 1024 * 1024;
 
 
+// Real Agent's public marketplace, which the install one-liners in its README take.
+export const PUBLIC_MARKETPLACE = "Real-Agent-Network-Limited/real-agent-marketplace";
+const RAW = `https://raw.githubusercontent.com/${PUBLIC_MARKETPLACE}/main/install`;
+
+/**
+ * The commands a person runs to set up their folder and sign in, with the project's address and publishable key, which is
+ * public: command, with Real Agent installed, and the README's install one-liners for macOS and Windows when it is not.
+ * With a code, --join makes the sign-in ask for it and a password they choose.
+ */
+export function personCommands(url, key, email, join) {
+  const options = `--email ${email} --url ${url} --key ${key}${join ? " --join" : ""}`;
+  return {
+    command: `node ~/.claude/plugins/marketplaces/${MARKETPLACE_NAME}/plugins/okb/cli/okb.mjs setup ${options}`,
+    install_command: `cd ~ && curl -fsSLO ${RAW}/install.sh && bash install.sh ${PUBLIC_MARKETPLACE} ${options}`,
+    install_command_windows: `cd ~; Invoke-WebRequest -UseBasicParsing ${RAW}/install.ps1 -OutFile install.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 ${PUBLIC_MARKETPLACE} ${options}`,
+  };
+}
+
 export const TOOLS = [
   {
     name: "whoami",
@@ -72,7 +90,7 @@ export const TOOLS = [
   },
   {
     name: "invite_person",
-    description: "Add one person to the firm's OKB in one call, as the signed-in administrator, through the okb-invite hosted function: it invites their email through Supabase Auth, which emails them a link to choose their password, or reuses the sign-in they already have; makes their actor, named \"<name> (Real Agent)\" for the real_agent template, with their sessions scope; gives the access template's grants, or a workflow role's grants from its access.json with the basic template's; saves the access record in the Administration scope; and, for Real Agent, completes setup's open \"Add Real Agent\" tasks. Give template, or workflow and role. Only an administrator's call goes on. Returns the person's name, email, actor_id, sign_in (invited or existing), the grants given by scope name, access_record_id and completed_tasks; never a password or a link.",
+    description: "Add one person to the firm's OKB in one call, as the signed-in administrator, through the okb-invite hosted function: it makes their actor, named \"<name> (Real Agent)\" for the real_agent template, and a one-time invitation code for their email, valid for 7 days, or reuses the sign-in they already have; gives the access template's grants, or a workflow role's grants from its access.json with the basic template's; saves the access record in the Administration scope; and, for Real Agent, completes setup's open \"Add Real Agent\" tasks. It sends no email. Give template, or workflow and role. Only an administrator's call goes on. Returns the person's name, email, actor_id, sign_in (code or existing), the code and code_expires_at for code, the grants given by scope name, access_record_id, completed_tasks, and the person's commands: command, the one line they run when Real Agent is installed, and install_command and install_command_windows, the install one-liners when it is not; never a password or a link to sign in.",
     inputSchema: {
       type: "object",
       properties: {
@@ -287,12 +305,13 @@ export function createTools({ ref, email, agentFolder = null, defaultSchema = nu
     return { ok: true, resultFile: written.file, bytes: written.bytes, summary: summarise(out.body) };
   }
 
-  /** okb-invite, as the signed-in person, with only the fields it reads. Its own answer comes back, refusal or not. */
+  /** okb-invite, as the signed-in person, with only the fields it reads. Its own answer comes back, refusal or not, with the person's commands. */
   async function invitePerson(args) {
     const body = Object.fromEntries(["name", "email", "template", "workflow", "role"].filter(k => args[k] !== undefined).map(k => [k, args[k]]));
     const session = await access();
     if (!session.ok) return session;
     const out = await callFunction(session.url, session.key, session.token, "okb-invite", body);
+    if (out.ok && out.body?.ok) return { ...out.body, ...personCommands(session.url, session.key, out.body.email, out.body.sign_in === "code") };
     if (out.ok) return out.body;
     return out.body && typeof out.body === "object" && out.body.ok === false ? out.body : { ok: false, problem: out.problem };
   }

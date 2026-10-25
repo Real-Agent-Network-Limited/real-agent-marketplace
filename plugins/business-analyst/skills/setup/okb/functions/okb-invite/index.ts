@@ -5,27 +5,30 @@
 // It confirms who the caller is with Supabase Auth, then asks OKB, as the caller, with okb_get_actor: only a person
 // whose actor is an administrator goes on. Nothing the caller sends says who they are.
 //
-// For the email it reuses the Auth user Supabase Auth already holds, and sends no email. Otherwise it invites the
-// email through Supabase Auth's admin API, POST /auth/v1/invite, as supabase.auth.admin.inviteUserByEmail does: Supabase
-// makes the Auth user and sends its "You have been invited" email, whose link signs the person in and sends them to the
-// project's Site URL, or to SET_PASSWORD_PAGE when it names a page. It then makes the person's OKB actor, as
-// bootstrap.sql's steps 3b and 3e do: "<name> (Real Agent)" for the real_agent template, with their sessions scope. It
-// gives the template's grants, or for a workflow role the basic template's, the role's grants from the newest release of
-// the workflow's access.json in its plugins_<workflow> scope, and read of that scope for a role plugin_readers names,
-// each approved by the caller. A person already in OKB keeps their actor and gets only the grants they lack. It saves the
-// access record in the Administration scope as the caller. With the real_agent template, it completes the open
-// "Add Real Agent" tasks setup left in Administration, with the access record linked as the evidence that supports each.
-// One transaction: a failure keeps nothing in OKB, and an Auth user this call invited is taken off again.
+// For an email Supabase Auth already holds, it makes the person's actor on that Auth user, with their sessions scope,
+// as bootstrap.sql's steps 3b and 3e do, and no code is needed. Otherwise it makes no Auth user and sends no email: it
+// makes the person's actor with no sign-in yet, with okb_private.provision_invited_actor, and a one-time invitation
+// code for the email, kept in okb_private.invitation as its SHA-256 alone. The code is three groups of four from an
+// alphabet with no look-alike letters or digits, about 59 bits, valid for 7 days, spent once, and locked after 5 wrong
+// tries. Inviting the email again replaces an unused code. The person spends it with okb-join, which makes their Auth
+// user with the password they choose and their sessions scope. The actor is "<name> (Real Agent)" for the real_agent
+// template. It gives the template's grants, or for a workflow role the basic template's, the role's grants from the
+// newest release of the workflow's access.json in its plugins_<workflow> scope, and read of that scope for a role
+// plugin_readers names, each approved by the caller. A person already in OKB keeps their actor and gets only the grants
+// they lack. It saves the access record in the Administration scope as the caller. With the real_agent template, it
+// completes the open "Add Real Agent" tasks setup left in Administration, with the access record linked as the evidence
+// that supports each. One transaction: a failure keeps nothing in OKB.
 //
-// Response: { ok: true, name, email, actor_id, sign_in: "invited" | "existing", template | workflow and role, grants,
-// access_record_id, completed_tasks } or { ok: false, problem }. It never holds a password, a token or a link.
+// Response: { ok: true, name, email, actor_id, sign_in: "code" | "existing", code and code_expires_at for "code",
+// template | workflow and role, grants, access_record_id, completed_tasks } or { ok: false, problem }. The code is in
+// this answer once, and nowhere else; it never holds a password, a token or a link.
 import postgres from "npm:postgres@3.4.9";
 
 const PROJECT = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-// The page the invitation's link sends the person to, once Real Agent has one that sets a password; null sends them to
-// the project's Site URL. A page named here must be in the project's Redirect URLs, or Supabase sends them to the Site URL.
-const SET_PASSWORD_PAGE: string | null = null;
+// How long a code lasts. okb-join counts its wrong tries.
+const CODE_DAYS = 7;
+// The code's letters and digits: no 0, 1, I, L, O or U, so none is mistaken for another when read aloud or typed.
+const ALPHABET = "ABCDEFGHJKMNPQRSTVWXYZ23456789";
 // The open task setup saves when Real Agent is not added yet, as functions/okb-setup/index.ts titles it.
 const ADD_REAL_AGENT = "Add Real Agent";
 
@@ -108,27 +111,21 @@ async function roleGrants(tx: any, caller: { id: string; token: string; key: str
   return grants;
 }
 
-/** The invited person's Auth user: the one Auth holds for the email, or a new one Supabase invites. */
-// deno-lint-ignore no-explicit-any
-async function authUser(tx: any, email: string, name: string): Promise<{ id: string; invited: boolean }> {
-  const [found] = await tx`select id from auth.users where lower(email) = lower(${email})`;
-  if (found) return { id: found.id, invited: false };
-  const to = SET_PASSWORD_PAGE ? `?redirect_to=${encodeURIComponent(SET_PASSWORD_PAGE)}` : "";
-  const res = await fetch(`${PROJECT}/auth/v1/invite${to}`, {
-    method: "POST",
-    headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}`, "Content-Type": "application/json" },
-    body: JSON.stringify({ email, data: { name } }),
-  }).catch(() => null);
-  const body = res ? await res.json().catch(() => ({})) : {};
-  if (!res?.ok || typeof body?.id !== "string") {
-    const said = String(body?.msg ?? body?.message ?? body?.error_description ?? body?.error ?? (res ? `HTTP ${res.status}` : "Supabase Auth could not be reached"));
-    const hint = /not authorized/i.test(said)
-      ? " Supabase's own email service writes only to members of your Supabase organisation, until the project has its own email server (custom SMTP)."
-      : "";
-    throw new Refused(502, `Supabase did not send the invitation to ${email}: ${said}.${hint}`);
+/** A new invitation code, such as K7QM-3XRD-W9PA: 12 characters, each from 30, drawn without bias. */
+function newCode(): string {
+  const out: string[] = [];
+  while (out.length < 12) {
+    for (const b of crypto.getRandomValues(new Uint8Array(32))) {
+      // 240 is the largest multiple of 30 below 256, so every character is equally likely.
+      if (b < 240 && out.length < 12) out.push(ALPHABET[b % 30]);
+    }
   }
-  return { id: body.id, invited: true };
+  return [0, 4, 8].map(i => out.slice(i, i + 4).join("")).join("-");
 }
+/** The code as okb-join compares it: upper case, without spaces or hyphens. */
+const codeKey = (code: string) => code.toUpperCase().replace(/[\s-]+/g, "");
+const codeHash = async (code: string) =>
+  Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(codeKey(code)))), b => b.toString(16).padStart(2, "0")).join("");
 
 const plain = (g: Grant, scopes: Map<string, string>) =>
   `${scopes.get(g.scope) ?? g.scope}: ${g.actions.join(", ")}${g.own_records ? ", on their own records" : ""}`;
@@ -152,8 +149,6 @@ Deno.serve(async (req) => {
     return json(400, { ok: false, problem: "Give either an access template, as template, or a workflow and one of its roles, as workflow and role." });
   if (workflow && !/^[a-z0-9][a-z0-9-]{0,62}$/.test(workflow)) return json(400, { ok: false, problem: `${workflow} is not a workflow plugin's name.` });
 
-  // The Auth user this call invited, taken off again when OKB keeps nothing, so its email's link signs no one in.
-  let invitedId: string | null = null;
   try {
     // deno-lint-ignore no-explicit-any
     const result = await db.begin(async (tx: any) => {
@@ -175,22 +170,39 @@ Deno.serve(async (req) => {
       const display = realAgent && !/\(Real Agent\)$/.test(name) ? `${name} (Real Agent)` : name;
       const authority = template ? basic.authority_class : "restricted";
 
-      const user = await authUser(tx, email, display);
-      if (user.invited) invitedId = user.id;
-      let [actor] = await tx`select actor_id, display_name, enabled from okb.actor where auth_user_id = ${user.id}`;
+      // The person: on the Auth user Supabase Auth holds for the email, or on the open invitation for it, or new.
+      const [found] = await tx`select id from auth.users where lower(email) = ${email}`;
+      const [pending] = found ? [] : await tx`select actor_id from okb_private.invitation where email = ${email} and used_at is null and replaced_at is null for update`;
+      let [actor] = found
+        ? await tx`select actor_id, display_name, enabled from okb.actor where auth_user_id = ${found.id}`
+        : pending ? await tx`select actor_id, display_name, enabled from okb.actor where actor_id = ${pending.actor_id}` : [];
       if (actor && !actor.enabled) throw new Refused(409, `${actor.display_name} is in OKB but disabled. Enable them first, as bootstrap.sql's step 5 says.`);
-      if (!actor) {
-        const [{ id }] = await tx`select okb_private.provision_actor(${me.actor_id}::uuid, ${user.id}::uuid, ${display}, 'human', null, ${authority}, false) as id`;
+      if (!actor && found) {
+        const [{ id }] = await tx`select okb_private.provision_actor(${me.actor_id}::uuid, ${found.id}::uuid, ${display}, 'human', null, ${authority}, false) as id`;
+        actor = { actor_id: id, display_name: display };
+      } else if (!actor) {
+        const [{ id }] = await tx`select okb_private.provision_invited_actor(${me.actor_id}::uuid, ${display}, ${authority}) as id`;
         actor = { actor_id: id, display_name: display };
       }
-      // Their sessions scope, as bootstrap.sql's step 3e makes it.
-      const sessions = `sessions_${user.id.replaceAll("-", "")}`;
-      const [had] = await tx`select scope_id from okb.scope where code = ${sessions}`;
-      if (!had) {
-        const [{ scope_id }] = await tx`insert into okb.scope(code, display_name, description, created_by)
-          values (${sessions}, ${`${actor.display_name}'s sessions`}, ${`The text of each session ${actor.display_name} has had with their agent.`}, ${me.actor_id}) returning scope_id`;
-        await tx`select okb_private.provision_grant(${me.actor_id}::uuid, gen_random_uuid(), ${actor.actor_id}::uuid, ${scope_id}::uuid, array['evidence'], null::uuid,
-          array['read','create','edit','delete'], null::timestamptz, 'Their agent keeps the text of each session with them here.')`;
+      // Their sessions scope, as bootstrap.sql's step 3e makes it, once they have a sign-in; okb-join makes it otherwise.
+      if (found) {
+        const sessions = `sessions_${found.id.replaceAll("-", "")}`;
+        const [had] = await tx`select scope_id from okb.scope where code = ${sessions}`;
+        if (!had) {
+          const [{ scope_id }] = await tx`insert into okb.scope(code, display_name, description, created_by)
+            values (${sessions}, ${`${actor.display_name}'s sessions`}, ${`The text of each session ${actor.display_name} has had with their agent.`}, ${me.actor_id}) returning scope_id`;
+          await tx`select okb_private.provision_grant(${me.actor_id}::uuid, gen_random_uuid(), ${actor.actor_id}::uuid, ${scope_id}::uuid, array['evidence'], null::uuid,
+            array['read','create','edit','delete'], null::timestamptz, 'Their agent keeps the text of each session with them here.')`;
+        }
+      }
+      // A one-time code for a person with no sign-in yet, replacing any unused one for the email.
+      let code: string | null = null, expires: string | null = null;
+      if (!found) {
+        code = newCode();
+        await tx`update okb_private.invitation set replaced_at = clock_timestamp() where email = ${email} and used_at is null and replaced_at is null`;
+        const [row] = await tx`insert into okb_private.invitation(actor_id, email, code_sha256, invited_by_actor_id, expires_at)
+          values (${actor.actor_id}, ${email}, ${await codeHash(code)}, ${me.actor_id}, clock_timestamp() + ${`${CODE_DAYS} days`}::interval) returning expires_at`;
+        expires = new Date(row.expires_at).toISOString();
       }
 
       // Each grant the person lacks, approved by the caller. A grant is held when a live one on the whole scope has each
@@ -219,9 +231,9 @@ Deno.serve(async (req) => {
       // The access record, and the tasks it closes, as the caller.
       await asCaller(tx, caller.id);
       const what = template ? `the ${template} access template` : `the ${role} role in the ${workflow} workflow`;
-      const summary = `${me.display_name} ${user.invited ? "invited" : "added"} ${actor.display_name} (${email}) and gave them ${what}`
+      const summary = `${me.display_name} ${found ? "added" : "invited"} ${actor.display_name} (${email}) and gave them ${what}`
         + (given.length ? `: ${given.map(g => plain(g, scopes)).join("; ")}.` : ", whose grants they already held.")
-        + (user.invited ? " Supabase sent them an email to choose their password." : " They already had a sign-in, so no email was sent.");
+        + (found ? " They already had a sign-in, so no code was made." : ` Their one-time invitation code lasts until ${expires!.slice(0, 10)}; they choose their own password when they use it.`);
       const [{ saved }] = await tx`select okb.okb_add_record('administration', 'evidence', ${`Access for ${actor.display_name}: ${template || `${role} in ${workflow}`}`},
         ${`Records the access given to ${actor.display_name}.`}, ${JSON.stringify({ summary, source_reference: "The okb-invite hosted function", source_date: new Date().toISOString().slice(0, 10),
           standing: "observed", limitations: "Written by okb-invite as the grants were given." })}::text::jsonb) as saved`;
@@ -240,7 +252,8 @@ Deno.serve(async (req) => {
         completed.push(t.title);
       }
       return {
-        ok: true, name: actor.display_name, email, actor_id: actor.actor_id, sign_in: user.invited ? "invited" : "existing",
+        ok: true, name: actor.display_name, email, actor_id: actor.actor_id, sign_in: found ? "existing" : "code",
+        ...(code ? { code, code_expires_at: expires } : {}),
         ...(template ? { template } : { workflow, role }),
         grants: given.map(g => ({ scope: scopes.get(g.scope) ?? g.scope, actions: g.actions, own_records: g.own_records })),
         access_record_id: saved.record_id, completed_tasks: completed,
@@ -248,7 +261,6 @@ Deno.serve(async (req) => {
     });
     return json(200, result);
   } catch (err) {
-    if (invitedId) await fetch(`${PROJECT}/auth/v1/admin/users/${invitedId}`, { method: "DELETE", headers: { apikey: SERVICE_KEY, Authorization: `Bearer ${SERVICE_KEY}` } }).catch(() => null);
     if (err instanceof Refused) return json(err.status, { ok: false, problem: err.message });
     const code = (err as { code?: string })?.code;
     if (code === "42501" || code === "22023" || code === "23514") return json(400, { ok: false, problem: message(err) });

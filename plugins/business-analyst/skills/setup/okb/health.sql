@@ -1,7 +1,8 @@
 -- OKB setup: the health check at the end of setup, in place of the release checks, which are Real Agent's own and
 -- never run in a client's project. Reads only, as postgres, through the Supabase connector's execute_sql. One row,
 -- whose ok is true when every part is:
---   scopes        the six scopes are there, each enabled, with a sessions scope for each person;
+--   scopes        the six scopes are there, each enabled, with a sessions scope for each person with a sign-in; a
+--                 person invited with a code gets theirs when they spend it;
 --   administrator the first administrator is there, enabled;
 --   real_agent    Real Agent's staff actors, each with the real_agent template's grants;
 --   data_api      the Data API serves okb;
@@ -14,7 +15,7 @@ with scopes as (
 ), people as (
  select count(*) filter (where authority_class = 'administrator' and enabled) as administrators,
   count(*) filter (where display_name like '% (Real Agent)' and enabled) as real_agent,
-  count(*) filter (where actor_kind = 'human') as humans
+  count(*) filter (where actor_kind = 'human' and auth_user_id is not null) as humans
  from okb.actor
 ), parts as (
  select

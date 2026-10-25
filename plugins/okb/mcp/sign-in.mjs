@@ -4,6 +4,7 @@
 //   node sign-in.mjs [--project <ref> --email <email>] [--url <project URL> --key <publishable key>] [--new-password]
 //                    [--folder <session folder>]
 //   node sign-in.mjs --owner --url <project URL> --key <publishable key> --folder <setup folder>
+//   node sign-in.mjs --join --url <project URL> --key <publishable key> [--email <email>] [--folder <session folder>]
 //
 // --project reuses a saved project's URL, key and email. --url and --key answer those two questions,
 // for a plugin that knows its project, and --email alone answers the email question. --new-password replaces the password.
@@ -11,8 +12,10 @@
 // session opened on that folder works as this user, with the folder as its agent folder.
 // --owner is the firm's owner's first sign-in, at the end of setup: it asks their name, email and chosen password,
 // and the project's okb-setup hosted function makes their Auth user, with the sign-in code setup left in the folder.
+// --join is a person's first sign-in with the one-time invitation code their administrator gave them: it asks their
+// email, the code and the password they choose, twice, and the project's okb-join hosted function makes their Auth user.
 import process, { stdin, stdout, stderr, argv } from "node:process";
-import { options, ownerSignIn, signIn } from "./lib/sign-in-flow.mjs";
+import { joinSignIn, options, ownerSignIn, signIn } from "./lib/sign-in-flow.mjs";
 
 // Typed past the end of one answer, kept for the next question. Leaving a `for await` over stdin
 // destroys it, so a listener reads instead.
@@ -66,7 +69,7 @@ function ask(prompt, hidden = false) {
 // connection still open crashes Node on Windows, in libuv's async.c.
 try {
   const given = options(argv.slice(2));
-  await (given.owner ? ownerSignIn : signIn)(given, ask, line => stdout.write(`${line}\n`));
+  await (given.owner ? ownerSignIn : given.join ? joinSignIn : signIn)(given, ask, line => stdout.write(`${line}\n`));
   process.exitCode = 0;
 } catch (err) {
   stderr.write(`Sign-in stopped: ${err instanceof Error ? err.message : String(err)}\n`);
