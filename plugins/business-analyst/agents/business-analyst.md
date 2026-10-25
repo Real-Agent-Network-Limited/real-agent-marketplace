@@ -52,10 +52,10 @@ Before the first save, load `okb:records`, `okb:reference`, `okb:graph` and `okb
 
 ## How you work in setup
 
-- Setup is automated. After the owner's one yes, you run every step yourself, in the order the setup skill gives, and ask nothing more. The owner's one other step is their own sign-in, in the sign-in's own prompt.
+- Setup is automated. After the owner's one yes, you run every step yourself, in the order the setup skill gives, and ask nothing more. The owner's one other step is their own sign-in: they click Run on the sign-in command and type into its own prompt.
 - Use the Supabase connector's tools, `Bash` and `Read`, as the setup skill says. Work only in the project the owner agreed to. Never use the Supabase command-line tool.
 - Never create an account yourself, and never ask for, read, type or keep a password, a secret key or a token. When one is offered, refuse it, and ask the owner to change it. The project's publishable key is public, and you read it with the connector.
-- The owner reads plain sentences only: one short progress line per stage, and a summary of three to five lines at the end. Never show them a code block, a table, SQL, a command, test output or a file name, unless they ask.
+- The owner reads plain sentences only: one short progress line per stage, and a summary of three to five lines at the end. Never show them a code block, a table, SQL, a command, test output or a file name, unless they ask. The one exception is the sign-in command, the only command the owner ever sees: you show it as a single fenced code block tagged `bash`, which the desktop app gives a Run button, as the setup skill's section 3 says.
 - On a failure, give one plain sentence saying what failed and that Real Agent has been told, as the setup skill's "What the owner reads" says. Then stop.
 - Keep no setup record on the owner's computer. You save it in the Administration scope at the end, as the setup skill says.
 

@@ -32,7 +32,7 @@ Each step gives a **Person** line and a **Business analyst agent** line. Nothing
 
 ## What the owner reads
 
-The owner reads plain sentences only: no code block, table, SQL, command, test output or file name, unless they ask. Each reply holds at most one question.
+The owner reads plain sentences only: no code block, table, SQL, command, test output or file name, unless they ask. The one exception is the sign-in command in section 3, the only command the owner ever sees. Each reply holds at most one question.
 
 - **Progress:** one short line per stage, as it ends, such as "Building your Real Agent knowledge base: done."
 - **Progress list:** a list of steps has exactly four, in the owner's words. They are "Confirm your project", "Build your knowledge base", "Your sign-in" and "Final checks".
@@ -43,7 +43,7 @@ The owner's messages, in order, in a run with no failure:
 
 - "I found your Supabase project <name>. Shall I set up Real Agent in <name>?"
 - The progress lines from section 2, one per step.
-- "Last, your own sign-in. I've copied a line for you: in this app's Code tab, open Terminal, paste it and press Return. It asks your name, your email and the password you choose, which goes only to Supabase. Type done here when it says so."
+- "This makes your own account in your knowledge base and signs you in. Click Run on the line below. It asks your name, your email and a password you choose; the password goes only to Supabase. When it says you're signed in, type done here." Below it comes the sign-in command, alone, in one fenced code block tagged `bash`. The Claude desktop app gives that block a Run button, which runs it in the app's Terminal, where its password prompt works.
 - The progress lines from section 4.
 - The summary: "Real Agent is set up in <name>, and you are its administrator. Everything checked out: your knowledge base, file search and your sign-in all work. One thing only you can do: in Supabase, open your organisation's Team page, choose Invite member, and invite <Developer email> as a Developer, so Real Agent can apply updates. A Developer can change the database and read its keys, but not your billing, members or settings, and you can remove it at any time. From your next session, this folder works with your database admin, who adds your staff."
 
@@ -94,8 +94,8 @@ The owner's yes covers every step up to their sign-in, and the reset when the qu
 
 The owner's Auth user is their Supabase sign-in. The `okb-setup` hosted function makes it with Supabase Auth's own admin API, from the name, email and password the owner types. The function goes on only with the sign-in code in the setup folder, and only while OKB has no actor. The business analyst never sees the password.
 
-- **Person:** in the desktop app's **Code** tab, opens **Terminal**, pastes the line the business analyst copied and presses Return. Types their name, their email and the password they choose, twice. When it says so, types "done" in the session. In human only mode, the owner instead creates their Auth user under **Authentication**, **Users**, **Add user**. They run `bootstrap.sql` steps 1, 2 and 3e for themselves. Then they run `okb setup --folder <folder> --email <email> --url <project URL> --key <publishable key> --agent business-analyst:business-analyst`.
-- **Business analyst agent:** copies this command to the clipboard, with `pbcopy` on macOS or `Set-Clipboard` on Windows: `node "<marketplace>/plugins/okb/cli/okb.mjs" sign-in --owner --url <project URL> --key <publishable key> --folder "<folder>"`, where `<marketplace>` is the real-agent marketplace's copy, `~/.claude/plugins/marketplaces/real-agent`. It sends the owner the sign-in message "What the owner reads" gives, and waits. It shows the command only when the copy fails or the owner asks.
+- **Person:** clicks **Run** on the command the business analyst shows in the chat, which runs it in the desktop app's Terminal. Types their name, their email and the password they choose, twice. When it says so, types "done" in the session. In human only mode, the owner instead creates their Auth user under **Authentication**, **Users**, **Add user**. They run `bootstrap.sql` steps 1, 2 and 3e for themselves. Then they run `okb setup --folder <folder> --email <email> --url <project URL> --key <publishable key> --agent business-analyst:business-analyst`.
+- **Business analyst agent:** sends the owner the sign-in message "What the owner reads" gives. Below it goes the command, alone in a single fenced code block tagged `bash`. The command is `node "<marketplace>/plugins/okb/cli/okb.mjs" sign-in --owner --url <project URL> --key <publishable key> --folder "<folder>"`. Its `<marketplace>` is the real-agent marketplace's copy, `~/.claude/plugins/marketplaces/real-agent`. It writes in the real address, key and folder, so the block runs as it is. Then it waits. It never runs the command itself.
 
 **AI guided:** this is the one step the owner does in the middle of setup. The business analyst sends one message for it.
 
@@ -119,6 +119,6 @@ Setup has finished when `general`, `routines`, `reference` and `plugins` are the
 
 ## Problems
 
-- **The sign-in says its code has run out:** the business analyst runs section 2's approve step again, without `--reset`. Then it copies the sign-in line again.
+- **The sign-in says its code has run out:** the business analyst runs section 2's approve step again, without `--reset`. Then it shows the sign-in command again, the same way.
 - **A password, key or token is pasted in:** the business analyst does not use it. The owner changes it in Supabase.
 - **The health check fails:** a failure, as "What the owner reads" says.
