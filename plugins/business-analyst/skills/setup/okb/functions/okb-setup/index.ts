@@ -61,17 +61,17 @@ function newCode(): string {
 /** The code's SHA-256 as okb-join compares it: upper case, without spaces or hyphens. */
 const codeHash = (code: string) => sha256(new TextEncoder().encode(code.toUpperCase().replace(/[\s-]+/g, "")));
 
-/** The open tasks setup leaves the owner, as first-administrator.sql saves them, titled as okb-invite and the database admin find them. */
+/** The open tasks setup leaves the owner, as first-administrator.sql saves them, titled as okb-invite and the business analyst find them. */
 export function openTasks(staff: { name: string; email: string }[], coded: { name: string; email: string; expires_at: string }[]) {
   const tasks: { title: string; description: string; completion_requirements: string }[] = [];
   if (!staff.length) tasks.push({
     title: "Add Real Agent as a user",
-    description: "Real Agent's staff are not in your knowledge base yet. Ask your database admin to add Real Agent once Real Agent gives you its email address.",
+    description: "Real Agent's staff are not in your knowledge base yet. Ask your business analyst to add Real Agent once Real Agent gives you its email address.",
     completion_requirements: "An actor named \"<name> (Real Agent)\" is in the knowledge base.",
   });
   for (const c of coded) tasks.push({
     title: `Send Real Agent its invitation code (${c.email})`,
-    description: `Setup made Real Agent's account, ${c.name} (Real Agent), with a one-time invitation code. Email the code to ${c.email}. It works once, until ${c.expires_at.slice(0, 10)}. If the code is lost or runs out, ask your database admin: add Real Agent, ${c.email}.`,
+    description: `Setup made Real Agent's account, ${c.name} (Real Agent), with a one-time invitation code. Email the code to ${c.email}. It works once, until ${c.expires_at.slice(0, 10)}. If the code is lost or runs out, ask your business analyst: add Real Agent, ${c.email}.`,
     completion_requirements: `${c.name} (Real Agent) has signed in with the code.`,
   });
   return tasks;

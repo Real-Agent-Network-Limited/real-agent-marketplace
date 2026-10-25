@@ -44,7 +44,7 @@ export const REAL_AGENT_CODE_FILE = ".okb-real-agent-code";
 
 /**
  * The hosted functions, in the order setup deploys them. okb-setup runs the setup files; the file search
- * functions follow, each with every file it imports; then okb-invite, which stays, for the database admin's invitations,
+ * functions follow, each with every file it imports; then okb-invite, which stays, for the business analyst's invitations,
  * okb-join, where an invited person spends their code and chooses their password, and okb-upgrade, which applies Real
  * Agent's signed upgrades for Real Agent's own actor.
  */

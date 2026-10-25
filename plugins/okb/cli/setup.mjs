@@ -24,6 +24,7 @@
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { endSetup, markSetup } from "../mcp/lib/setup-marker.mjs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -205,6 +206,8 @@ export function setup(argv, { home = homedir(), signInArgs, signInPath, syncArgs
       runClaude(["plugin", "install", `${plugin}@${MARKETPLACE_NAME}`], say);
     }
     if (o.owner) {
+      // Setup is under way in the folder until a signed-in okb setup ends it.
+      markSetup(folder);
       say(`Done. Start a new Code session on ${folder}, and type: ${OWNER_PHRASE}`);
       return 0;
     }
@@ -217,6 +220,8 @@ export function setup(argv, { home = homedir(), signInArgs, signInPath, syncArgs
       runSignIn(signInPath, signInArgs([...(o.newPassword ? ["--new-password"] : []), ...(o.join ? ["--join"] : []), ...where, "--folder", folder, "--email", o.email], o.email).slice(1), say);
     }
     runSync(syncArgs, folder, say);
+    // A folder signed in and synced has finished setup: its agent keeps to the okb plugin's tools from now on.
+    endSetup(folder);
     say(`Done. Start a new Code session on ${folder}, and type: who am I?`);
     return 0;
   } catch (err) {

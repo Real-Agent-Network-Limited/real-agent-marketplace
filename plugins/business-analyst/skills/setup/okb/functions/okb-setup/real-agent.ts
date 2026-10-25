@@ -4,7 +4,7 @@
 // list. okb-setup makes a one-time invitation code for each, and first-administrator.sql makes each one an actor named
 // "<name> (Real Agent)" with the real_agent access template. okb-setup sends each code to ACCESS_URL. A code it could
 // not send goes in the setup summary instead, for the owner to email to its address. An empty list leaves the owner an
-// open task, "Add Real Agent", which the database admin's invite_person completes later.
+// open task, "Add Real Agent", which the business analyst's invite_person completes later.
 export const STAFF: { name: string; email: string }[] = [{ name: "Support", email: "support@realagent.network" }];
 
 /** Real Agent's website, which takes each code okb-setup makes for Real Agent's staff, or null to send none. */

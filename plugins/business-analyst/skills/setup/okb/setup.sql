@@ -1973,7 +1973,7 @@ create policy "OKB: delete with delete permission" on storage.objects
 -- keeps one workflow plugin's releases, and the guides scope keeps Real Agent's guides. Their files change
 -- only for an actor whose own live grant there carries the action: an administrator's authority alone reads
 -- them and changes none. Of the access templates, only Real Agent's grants create, edit and delete in plugins
--- and guides, and the database admin gives Real Agent's actor the same grant in each workflow plugin's scope.
+-- and guides, and the administrator's business analyst gives Real Agent's actor the same grant in each workflow plugin's scope.
 set role okb_owner;
 grant create on schema okb_storage to okb_identity;
 reset role;

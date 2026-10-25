@@ -50,7 +50,7 @@ With the agent, the person's own instruction replaces a rule of this skill, such
    - `standing` is `observed` when the agent read the result itself in this session, such as a tool's answer. It is `stated` when only the person reports it, such as what their phone showed.
    - `limitations` names any part of the lesson the person could not do, and why, or "none".
    - **Person:** runs `okb okb_add_record p_scope=general p_kind=evidence p_title="<title>" p_reason="Getting started lesson finished" p_fields.summary="<summary>" p_fields.source_reference="<source>" p_fields.source_date=<today> p_fields.standing=<standing> p_fields.limitations="<limitations>" p_preview=true`. They read the preview, then run the same command without `p_preview`.
-   - **The agent:** calls `okb_add_record` with those fields and `p_preview` true, and shows the person the record, as the `okb:records` skill's section 3 describes. Once they agree, it calls `okb_save_version` with the preview's `request` and `authorisation_id`, unchanged. A refusal for a missing grant goes to the database admin, as that section says.
+   - **The agent:** calls `okb_add_record` with those fields and `p_preview` true, and shows the person the record, as the `okb:records` skill's section 3 describes. Once they agree, it calls `okb_save_version` with the preview's `request` and `authorisation_id`, unchanged. A refusal for a missing grant goes to the person's administrator, as that section says.
    - **Evidence:** the saved version's `version_id`.
 
 **AI guided:** the agent gives the person the lessons done and the next one, and waits for their approval to begin it.
@@ -114,7 +114,7 @@ Each of the firm's workflows is one plugin with one agent, and each routine in i
 
 1. **List the agents in the folder.**
    - **Person:** types `@` in a session, and reads the list Claude desktop offers.
-   - **The agent:** asks the person which agents the list shows. It names the database operator, the database admin, the business analyst and each workflow agent among them.
+   - **The agent:** asks the person which agents the list shows. It names the database operator, the business analyst and each workflow agent among them.
 2. **Call the business analyst with a question it answers without changing anything.**
    - **Person:** types `@business-analyst:business-analyst Is setup finished?`
    - **The agent:** none. The business analyst answers, as the setup skill's status requests say. The agent asks the person for the answer.

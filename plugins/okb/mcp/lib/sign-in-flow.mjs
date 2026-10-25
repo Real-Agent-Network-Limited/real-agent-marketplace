@@ -2,6 +2,7 @@
 import { chmodSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { writeActorFile } from "./actor-file.mjs";
+import { markSetup } from "./setup-marker.mjs";
 import { accountEmail, passwordSignIn, projectUrl, readSession, refFromUrl, setPassword, writeSession, PROJECT_REF } from "./session.mjs";
 
 export const USAGE = "Usage: node sign-in.mjs [--project <ref> --email <email>] [--url <project URL> --key <publishable key>] [--new-password] [--folder <session folder>]";
@@ -131,6 +132,8 @@ export async function ownerSignIn({ url: knownUrl, key, folder }, ask, say) {
   if (!session.ok) throw new Error(`your sign-in was made, but signing in with it failed: ${session.problem}`);
   if (accountEmail(session.body.user?.email) !== email) throw new Error(`Supabase signed in ${session.body.user?.email}, not ${email}. Nothing was saved.`);
   writeSession(ref, email, { projectRef: ref, url, publishableKey: key, email, refreshToken: session.body.refresh_token });
+  // Setup goes on in the folder after the owner's sign-in, so the folder is marked before its actor file is written.
+  markSetup(folder);
   writeActorFile(folder, { projectRef: ref, email });
   rmSync(codeFile, { force: true });
   // Real Agent's one-time codes that okb-setup could not send to Real Agent, for the business analyst's summary to give

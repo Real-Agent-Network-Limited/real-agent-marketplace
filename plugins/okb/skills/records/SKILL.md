@@ -5,7 +5,7 @@ description: Use when a person, or their agent, works in OKB's records as themse
 
 # OKB records
 
-This skill is how a signed-in actor works in the records of OKB, the firm's organisational knowledge base. Changes to OKB are made by the database operator, `@real-agent:database-operator`, or for an administrator by the database admin, `@real-agent:database-admin`. Each follows this skill's rules on asking before each change. A session that is neither calls the database operator for each change. It passes on the person's answer, quoting their words with the change the agent proposed.
+This skill is how a signed-in actor works in the records of OKB, the firm's organisational knowledge base. Changes to OKB are made by the database operator, `@real-agent:database-operator`, or for an administrator by the business analyst, `@business-analyst:business-analyst`. Each follows this skill's rules on asking before each change. A session that is neither calls the database operator for each change. It passes on the person's answer, quoting their words with the change the agent proposed.
 
 Every task is a call to one of OKB's database functions, in the `okb` schema, through the okb plugin's `rpc` tool, as the signed-in person. OKB itself decides what each call may see and change, from the actor's grants. A record the actor may not read is absent, and a change the actor may not make is refused.
 
@@ -648,7 +648,7 @@ An **access template** is a named set of grants, which OKB holds. Each of its gr
 
 - **Responsible:** the person who is an administrator.
 - **Person:** reads the templates with `okb okb_get_access_templates`. Gives a person one with `okb okb_apply_access_template p_person=<actor id> p_template=<code>`. Changes one with `okb okb_save_access_template p_code=<code> p_grants=@<grants file> p_reason="<why>"`, and adds one with `p_description` and `p_authority_class` too.
-- **Database admin agent:**
+- **Business analyst agent:**
   1. Calls `okb_get_access_templates`, and shows each template's grants in plain words. It names each scope, what the person may do there, and any limit to their own records.
   2. To give a person a template, shows the person and the template's grants, and waits for their agreement. Calls `okb_apply_access_template` with the person's actor id as `p_person` and the template's code as `p_template`. The answer lists each grant it `issued`, and `already_held` counts those the person held. A second call issues nothing more.
   3. To change a template, shows the old and new grants side by side, and waits for the person's agreement. Calls `okb_save_access_template` with the reason. The answer gives the `old` and `new` template.

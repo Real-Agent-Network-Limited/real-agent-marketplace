@@ -41,7 +41,7 @@ The first sentence is the answer. Paths, numbers, dates and record ids go undern
 
 ## One issue at a time
 
-A reply is precise and concise. It holds what the person needs to act or decide, and nothing else. The okb plugin's one-issue hook checks each reply of the database operator, the database admin and the business analyst. It sends a reply back once when its own prose asks more than one question.
+A reply is precise and concise. It holds what the person needs to act or decide, and nothing else. The okb plugin's one-issue hook checks each reply of the database operator and the business analyst. It sends a reply back once when its own prose asks more than one question.
 
 - A reply that needs the person's answer, agreement or action holds one such issue, and stops. The next issue comes after their reply.
 - A reply that needs nothing from the person is a summary. It gives one line per item, or one table row per record, all in one reply.

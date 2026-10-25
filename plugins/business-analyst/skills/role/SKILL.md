@@ -48,7 +48,7 @@ With the business analyst, the person's own instruction replaces a rule of this 
 - **Business analyst agent:**
   1. Says in two sentences what it is there to do, and asks one question. "I'm here to write down how your role works, one process at a time, so a newcomer can learn it from OKB. Which role is it?" is the length and the register.
   2. Asks which scope the role's files go in, such as Lettings knowledge. Finds its code with `okb_get_scopes`. When the firm has no knowledge scope for that part of the business, says an administrator adds one, and offers `routines` until then.
-  3. Calls `okb_get_authorisations`. The person can document the role when they are an administrator, or hold a live grant in the scope with `read`, `create` and `edit` for `activity` and `evidence` records. Without one, says the database admin, `@real-agent:database-admin`, gives it, and stops.
+  3. Calls `okb_get_authorisations`. The person can document the role when they are an administrator, or hold a live grant in the scope with `read`, `create` and `edit` for `activity` and `evidence` records. Without one, says their administrator gives it, and stops.
   4. Asks whether someone holds the role today, or no one holds it yet. It asks this as its own question, even when the person's words suggest the answer. The answer is the role's status: `current` or `intended`.
   5. Names the role's folder: `roles/<role>/` for a current role, and `roles/<role>/intended/` for an intended one. `<role>` is the role's title in lowercase words joined by hyphens, such as `lettings-negotiator` or `sales-progressor`.
   6. Lists the folder's files with `list_files`, and reads each one that is there, as step 6 describes. A folder that holds the role's files gives the role and its status in their headers. The business analyst names both to the person in one line.
@@ -169,7 +169,7 @@ Time-bound material goes on a page for the newcomer, apart from the role's files
 ## Problems
 
 - **No knowledge scope for that part of the business:** only an administrator adds a scope. The business analyst says so, and offers `routines` until then.
-- **No grant to upload to the scope, or to make a task in it:** OKB's refusal names the missing action. The business analyst tells the person, and that the database admin, `@real-agent:database-admin`, can grant it. The person can name another scope they can write.
+- **No grant to upload to the scope, or to make a task in it:** OKB's refusal names the missing action. The business analyst tells the person, and that their administrator can grant it. The person can name another scope they can write.
 - **No grant to save a term in `reference`:** the term becomes a task for an administrator, as step 5 says.
 - **A file of that name is already there, and the upload is refused:** the business analyst downloads and reads that file. It offers to change it in place of a new one. The changed file is uploaded with `overwrite`, on the person's yes.
 - **"stale":** someone saved a newer version of the task. The business analyst reads the record again, and shows the person the newer version before saving.

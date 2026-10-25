@@ -2,8 +2,8 @@
 
 Real Agent's plugins for estate agents. Each firm keeps its Real Agent knowledge base in its own Supabase project. Supabase is the online database service that holds it. The knowledge base's technical name is OKB, short for organisational knowledge base. The plugins are:
 
-- `business-analyst`: the business analyst, who sets up Real Agent with the firm's owner and then interviews the firm's people about their routines.
-- `real-agent`: the database operator, every member of staff's agent, and the database admin, the agent of the firm's administrator.
+- `business-analyst`: the business analyst, the agent of the firm's owner and administrators. It sets up Real Agent with the owner, adds staff and gives them their roles, and interviews the firm's people about their routines.
+- `real-agent`: the database operator, every member of staff's agent, and the skills every firm gets.
 - `okb`: the sign-in, the `okb` command, and the tools each agent uses in the knowledge base.
 
 ## Getting set up
@@ -38,7 +38,7 @@ Before you type it, create a free account and a project at supabase.com, and con
 
 ### 2. Each member of staff, after setup
 
-Once setup has finished, the firm's administrator adds each member of staff with their database admin. The administrator then gives the member of staff two things:
+Once setup has finished, the firm's administrator adds each member of staff with their business analyst. The administrator then gives the member of staff two things:
 
 - a one-time invitation code, such as `K7QM-3XRD-W9PA`, which works once, for 7 days;
 - the command for their computer, with their email, the project's address and its publishable key filled in.

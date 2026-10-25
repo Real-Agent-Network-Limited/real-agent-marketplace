@@ -1,7 +1,7 @@
 {
   "name": "real-agent",
-  "description": "Two agents every firm gets with Real Agent, for its Real Agent knowledge base, the organisational knowledge base (OKB): the database operator, for every member of staff, and the database admin, for the firm's administrator.",
-  "version": "0.7.0",
+  "description": "The database operator, every member of staff's agent for their firm's Real Agent knowledge base, the organisational knowledge base (OKB), with the skills every firm gets: adding staff, approving a model, getting started, updating plugins and support.",
+  "version": "0.9.0",
   "author": {
     "name": "Real Agent"
   },
