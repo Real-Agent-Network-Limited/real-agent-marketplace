@@ -110,7 +110,7 @@ Each person starts a session in Claude desktop, on their office computer, in the
 
 ## 5. Lesson 4: Calling a workflow agent with @
 
-Each of the firm's workflows is one plugin with one agent, and each routine in it is one skill. The person calls an agent by typing `@` and its name, such as `@appraisal:appraisal`. Every folder has the business analyst, `@business-analyst:business-analyst`, which writes down the firm's routines.
+Each of the firm's workflows is one plugin with one agent, and each routine in it is one skill. The person calls an agent by typing `@` and its name, such as `@appraisal:appraisal`. Every folder has the business analyst, `@business-analyst:business-analyst`, which writes down the firm's workflows and their routines.
 
 1. **List the agents in the folder.**
    - **Person:** types `@` in a session, and reads the list Claude desktop offers.

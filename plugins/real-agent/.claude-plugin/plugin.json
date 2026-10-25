@@ -1,7 +1,7 @@
 {
   "name": "real-agent",
   "description": "The database operator, every member of staff's agent for their firm's Real Agent knowledge base, the organisational knowledge base (OKB), with the skills every firm gets: adding staff, approving a model, getting started, updating plugins and support.",
-  "version": "0.9.0",
+  "version": "0.10.0",
   "author": {
     "name": "Real Agent"
   },
