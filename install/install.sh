@@ -11,13 +11,13 @@
 # It installs Homebrew, then each program the okb plugin uses that is missing, with Homebrew, and Node.js 26 with
 # nodejs.org's installer. It prints one line for each: installed, already there, or failed with the command to run
 # by hand. It then adds the marketplace, installs the okb, real-agent and business-analyst plugins from it, and runs
-# the okb plugin's `okb.mjs setup` with the options given. okb setup makes the person's folder, ~/okb unless
+# the okb plugin's `okb.mjs setup` with the options given. okb setup makes the person's folder, ~/real-agent unless
 # --folder names another, signs in as --email, and runs okb sync, which installs the firm's own release of its
 # plugins in place of the public copy.
 #
 # --owner is the firm's owner's first run, before the firm has a Supabase project. okb setup --owner makes the folder
 # and names the business analyst, business-analyst:business-analyst, as its agent, and neither signs in nor runs
-# okb sync. It ends: "Start a new Code session on <folder>, and type: Set up OKB".
+# okb sync. It ends: "Start a new Code session on <folder>, and type: Set up Real Agent".
 #
 # This script never asks for or keeps a password. okb setup's sign-in asks for the person's password at its own
 # prompt. Homebrew and Node.js's installer ask for the Mac's own password, with sudo, only when they install.
@@ -51,7 +51,7 @@ if [ "$owner" = 1 ]; then
 else
   case "$email" in ?*@?*) ;; *) echo "--email is needed: the work email your administrator gave you."; echo "The firm's owner, before the firm has a project, gives --owner instead."; echo "$USAGE"; exit 2 ;; esac
 fi
-case "$folder" in ""|-*) folder="$HOME/okb" ;; esac
+case "$folder" in ""|-*) folder="$HOME/real-agent" ;; esac
 case "$folder" in "~/"*) folder="$HOME/${folder#\~/}" ;; esac
 
 # The name of Real Agent's marketplace in Claude Code, which each plugin's id ends with.

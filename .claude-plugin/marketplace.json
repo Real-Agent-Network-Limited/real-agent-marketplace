@@ -4,23 +4,23 @@
     "name": "Joel Smalley"
   },
   "metadata": {
-    "description": "Real Agent's plugins for estate agents: the organisational knowledge base (OKB) each firm keeps in its own Supabase project, and the agents that work in it.",
+    "description": "Real Agent's plugins for estate agents: the Real Agent knowledge base each firm keeps in its own Supabase project, its organisational knowledge base (OKB), and the agents that work in it.",
     "version": "1.6.0"
   },
   "plugins": [
     {
       "name": "real-agent",
-      "description": "Two agents every firm gets with its organisational knowledge base (OKB): the database operator, for every member of staff, and the database admin, for the firm's administrator.",
+      "description": "Two agents every firm gets with Real Agent, for its Real Agent knowledge base, the organisational knowledge base (OKB): the database operator, for every member of staff, and the database admin, for the firm's administrator.",
       "source": "./plugins/real-agent"
     },
     {
       "name": "okb",
-      "description": "Lets each person work in their firm's organisational knowledge base (OKB), in the firm's own Supabase project, within their own permissions: records, files and their search, the glossary and data dictionary, boards, graphs and printed PDFs.",
+      "description": "Lets each person work in their firm's Real Agent knowledge base, its organisational knowledge base (OKB), in the firm's own Supabase project, within their own permissions: records, files and their search, the glossary and data dictionary, boards, graphs and printed PDFs.",
       "source": "./plugins/okb"
     },
     {
       "name": "business-analyst",
-      "description": "Sets up a firm's organisational knowledge base (OKB) in its own Supabase project, then interviews its people about their routines, one routine at a time, and saves each confirmed routine in OKB as a model of how the work is done today.",
+      "description": "Sets up Real Agent for a firm: its Real Agent knowledge base, the organisational knowledge base (OKB), in its own Supabase project. Then interviews its people about their routines, one routine at a time, and saves each confirmed routine in the knowledge base as a model of how the work is done today.",
       "source": "./plugins/business-analyst"
     }
   ]

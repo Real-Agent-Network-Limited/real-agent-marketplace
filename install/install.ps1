@@ -12,12 +12,12 @@
 # It prints one line for each: installed, already there, or failed with the command to run by hand. It refreshes its
 # own PATH after each install. It then adds the marketplace, installs the okb plugin with whisper.cpp's paths in its
 # settings, then the real-agent and business-analyst plugins, and runs the okb plugin's `okb.mjs setup` with the
-# options given. okb setup makes the person's folder, %USERPROFILE%\okb unless --folder names another, signs in as
+# options given. okb setup makes the person's folder, %USERPROFILE%\real-agent unless --folder names another, signs in as
 # --email, and runs okb sync, which installs the firm's own release of its plugins in place of the public copy.
 #
 # --owner is the firm's owner's first run, before the firm has a Supabase project. okb setup --owner makes the folder
 # and names the business analyst, business-analyst:business-analyst, as its agent, and neither signs in nor runs
-# okb sync. It ends: "Start a new Code session on <folder>, and type: Set up OKB".
+# okb sync. It ends: "Start a new Code session on <folder>, and type: Set up Real Agent".
 #
 # This script never asks for or keeps a password. okb setup's sign-in asks for the person's password at its own
 # prompt. Windows asks once to approve the installs that need an administrator. A folder already signed in keeps its
@@ -55,7 +55,7 @@ if ($Owner) {
   Write-Host "The firm's owner, before the firm has a project, gives --owner instead."
   Write-Host $Usage; exit 2
 }
-if (-not $Folder -or $Folder.StartsWith('-')) { $Folder = Join-Path $HOME 'okb' }
+if (-not $Folder -or $Folder.StartsWith('-')) { $Folder = Join-Path $HOME 'real-agent' }
 
 # The name of Real Agent's marketplace in Claude Code, which each plugin's id ends with.
 $MarketplaceName = 'real-agent'

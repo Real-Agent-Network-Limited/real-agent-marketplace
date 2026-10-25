@@ -1,10 +1,10 @@
 # Real Agent
 
-Real Agent's plugins for estate agents. Each firm keeps its organisational knowledge base, OKB, in its own Supabase project. Supabase is the online database service that holds it. The plugins are:
+Real Agent's plugins for estate agents. Each firm keeps its Real Agent knowledge base in its own Supabase project. Supabase is the online database service that holds it. The knowledge base's technical name is OKB, short for organisational knowledge base. The plugins are:
 
-- `business-analyst`: the business analyst, who sets up OKB with the firm's owner and then interviews the firm's people about their routines.
+- `business-analyst`: the business analyst, who sets up Real Agent with the firm's owner and then interviews the firm's people about their routines.
 - `real-agent`: the database operator, every member of staff's agent, and the database admin, the agent of the firm's administrator.
-- `okb`: the sign-in, the `okb` command, and the tools each agent uses in OKB.
+- `okb`: the sign-in, the `okb` command, and the tools each agent uses in the knowledge base.
 
 ## Getting set up
 
@@ -12,7 +12,7 @@ Install the Claude desktop app, and sign in to it. In the app's **Code** tab, op
 
 ### 1. The firm's owner, before setup
 
-The owner is the person at the firm who will own the Supabase account and become OKB's first administrator. The owner runs this command first, before the firm has a Supabase project.
+The owner is the person at the firm who will own the Supabase account and become Real Agent's first administrator. The owner runs this command first, before the firm has a Supabase project.
 
 On macOS:
 
@@ -26,21 +26,21 @@ On Windows:
 cd ~; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.ps1 -OutFile install.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 Real-Agent-Network-Limited/real-agent-marketplace --owner
 ```
 
-The script installs the programs and the plugins, as section 3 says. It then makes the folder `okb` in your home folder, and makes the business analyst that folder's agent. It does not sign you in, since there is no project to sign in to yet. Give `--folder <folder>` for another folder, outside any Git repository.
+The script installs the programs and the plugins, as section 3 says. It then makes the folder `real-agent` in your home folder, and makes the business analyst that folder's agent. It does not sign you in, since there is no project to sign in to yet. Give `--folder <folder>` for another folder, outside any Git repository.
 
-It ends with "Start a new Code session on" the folder. Quit and reopen the Claude desktop app. Start a new Code session on `~/okb`, and type:
+It ends with "Start a new Code session on" the folder. Quit and reopen the Claude desktop app. Start a new Code session on `~/real-agent`, and type:
 
 ```
-Set up OKB
+Set up Real Agent
 ```
 
-Every message in a session on that folder goes straight to the business analyst. It guides you through setup one step at a time. It checks what it can with the Supabase connector, and asks you only for what Supabase's own pages show. You create the Supabase account, choose each password and copy each key yourself. The business analyst never asks for a password, a key or a token.
+Before you type it, create a free account and a project at supabase.com, and connect Supabase in the Claude desktop app's connectors. The business analyst does the rest. It names your project and asks once whether to set up Real Agent there. After your yes, it builds everything itself, and asks you only to choose your own sign-in, typing your password into the sign-in's own prompt. It ends with a short summary. It never sees, asks for or types a password or a secret key.
 
 ### 2. Each member of staff, after setup
 
 Once setup has finished, the firm's administrator gives each member of staff three things:
 
-- the email address their OKB login uses, and a first password, through the firm's password manager;
+- the email address their Real Agent login uses, and a first password, through the firm's password manager;
 - the project's address, such as `https://abcdefghijklmnopqrst.supabase.co`;
 - the project's publishable key.
 
@@ -58,9 +58,9 @@ On Windows:
 cd ~; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.ps1 -OutFile install.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 Real-Agent-Network-Limited/real-agent-marketplace --email <email> --url <project address> --key <publishable key> --new-password
 ```
 
-The script installs the programs and the plugins, then sets up the folder `okb` in your home folder with `okb setup`. The sign-in asks for the first password you were given. Then it asks for a new password of your own, twice. Each password stays hidden as you type it. Save the new password in your password manager. If you type the first password again as the new one, the first password stays.
+The script installs the programs and the plugins, then sets up the folder `real-agent` in your home folder with `okb setup`. The sign-in asks for the first password you were given. Then it asks for a new password of your own, twice. Each password stays hidden as you type it. Save the new password in your password manager. If you type the first password again as the new one, the first password stays.
 
-The last step, `okb sync`, installs your firm's own release of the plugins from your firm's OKB. Until Real Agent publishes the firm's first release, it says there is no release yet, and the plugins from this marketplace stay.
+The last step, `okb sync`, installs your firm's own release of the plugins from your firm's knowledge base. Until Real Agent publishes the firm's first release, it says there is no release yet, and the plugins from this marketplace stay.
 
 It ends with "Start a new Code session on" your folder. Quit and reopen the Claude desktop app, start a new Code session on the folder, and type:
 

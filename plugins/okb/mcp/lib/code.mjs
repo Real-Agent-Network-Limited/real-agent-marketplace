@@ -6,8 +6,8 @@
 // the runtime's MANIFEST. The MCP server makes the tool with createCodeTool.
 //
 // Node.js's permission model, as observed on 24 October 2026 with Node.js 26.11.1, refuses lstat and readdir of a folder
-// it was given when another path it was given starts with the folder's name, as ~/okb-notes starts with ~/okb. Pyodide
-// then cannot mount the folder. So the runtime is kept in ~/.cache, apart from the agent folder, ~/okb by default, and a
+// it was given when another path it was given starts with the folder's name, as ~/real-agent-notes starts with ~/real-agent. Pyodide
+// then cannot mount the folder. So the runtime is kept in ~/.cache, apart from the agent folder, ~/real-agent by default, and a
 // run whose folders name each other so is refused, naming both.
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
@@ -69,7 +69,7 @@ export function firstLink(folder) {
   return null;
 }
 
-/** The first two paths of which one starts with the other's name but is not inside it, as ~/okb-notes and ~/okb, or null. */
+/** The first two paths of which one starts with the other's name but is not inside it, as ~/real-agent-notes and ~/real-agent, or null. */
 export function clashing(paths) {
   for (const one of paths) for (const other of paths)
     if (one !== other && other.startsWith(one) && other[one.length] !== sep) return [one, other];

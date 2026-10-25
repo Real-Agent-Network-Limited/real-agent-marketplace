@@ -1,8 +1,10 @@
 // Text out of a file, and chunks out of the text.
 import { extractText, getDocumentProxy } from "npm:unpdf@1.8.1";
-// SheetJS 0.20.3, kept in the worker's vendor folder; vendor/sheetjs-0.20.3/SHA256SUMS records its files.
-// @deno-types="./vendor/sheetjs-0.20.3/types/index.d.ts"
-import * as XLSX from "./vendor/sheetjs-0.20.3/xlsx.mjs";
+// SheetJS 0.20.3 from SheetJS's own versioned address, so the worker deploys as two files through the Supabase
+// connector. The vendor folder keeps a copy, and test/stand-in/run.sh checks that this address serves those bytes,
+// as vendor/sheetjs-0.20.3/SHA256SUMS records them.
+// @deno-types="https://cdn.sheetjs.com/xlsx-0.20.3/package/types/index.d.ts"
+import * as XLSX from "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 import mammoth from "npm:mammoth@1.12.3";
 import { strFromU8, unzipSync } from "npm:fflate@0.8.2";
 import { Buffer } from "node:buffer";

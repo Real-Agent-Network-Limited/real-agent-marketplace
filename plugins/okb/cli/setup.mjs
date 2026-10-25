@@ -5,12 +5,15 @@
 // writes the folder's actor file. Its last step, the first after a first sign-in, is okb sync in the
 // folder, which installs the firm's own release of its plugins from OKB in place of the public copy.
 //
-//   node okb.mjs setup --folder <folder> --email <email> [--url <project URL> --key <publishable key>] [--agent <plugin>:<agent>] [--new-password]
-//   node okb.mjs setup --owner --folder <folder>
+//   node okb.mjs setup [--folder <folder>] --email <email> [--url <project URL> --key <publishable key>] [--agent <plugin>:<agent>] [--new-password]
+//   node okb.mjs setup --owner [--folder <folder>]
+//
+// The folder is ~/real-agent unless --folder names another. A folder set up before under another name, such as
+// ~/okb, keeps working: run setup again with --folder naming it.
 //
 // --owner is the firm's owner's first run, before the firm has a Supabase project: it makes the folder, names the
 // business analyst as its agent and installs its plugin, and neither signs in nor runs okb sync, since there is no
-// project yet. The owner then asks the business analyst, in a session on the folder, to set up OKB.
+// project yet. The owner then types "Set up Real Agent" in a session on the folder.
 //
 // Each step prints what it did, or that it was already done, so running it again is safe. A failed step
 // stops the run with Claude Code's or the sign-in's message, and every step before it stays done.
@@ -32,12 +35,16 @@ export const MARKETPLACE_NAME = "real-agent";
 export const DEFAULT_AGENT = "real-agent:database-operator";
 /** The agent of the owner's folder while OKB is set up. */
 export const OWNER_AGENT = "business-analyst:business-analyst";
+/** The folder's name in the home folder when --folder is left out. */
+export const DEFAULT_FOLDER = "real-agent";
+/** What the owner types in a session on their folder to start setup. */
+export const OWNER_PHRASE = "Set up Real Agent";
 
-export const SETUP_USAGE = `Usage: node okb.mjs setup --folder <folder> --email <email> [--url <project URL> --key <publishable key>] [--agent <plugin>:<agent>] [--new-password]
-       node okb.mjs setup --owner --folder <folder>
+export const SETUP_USAGE = `Usage: node okb.mjs setup [--folder <folder>] --email <email> [--url <project URL> --key <publishable key>] [--agent <plugin>:<agent>] [--new-password]
+       node okb.mjs setup --owner [--folder <folder>]
 
-setup sets up a folder for one person in their firm's OKB: the folder, where you put files for your
-agent and your agent keeps its work, the agent the folder works with, ${DEFAULT_AGENT} unless --agent names another, that agent's plugin
+setup sets up a folder for one person in their firm's OKB: the folder, ~/${DEFAULT_FOLDER} unless --folder
+names another, where you put files for your agent and your agent keeps its work, the agent the folder works with, ${DEFAULT_AGENT} unless --agent names another, that agent's plugin
 from the ${MARKETPLACE_NAME} marketplace, and the person's sign-in as --email. A session opened on the
 folder then works as that person. Last, it runs okb sync in the folder, which installs the firm's own
 release of its plugins from OKB's Plugins scope in place of the public copy. --url and --key give the project's address and publishable key,
@@ -46,7 +53,7 @@ the first password.
 
 --owner is for the firm's owner, before the firm has a Supabase project. It makes the folder, names the
 business analyst, ${OWNER_AGENT}, as the folder's agent, and installs its plugin. It neither signs in
-nor runs okb sync. A session opened on the folder then sets up OKB with the owner.`;
+nor runs okb sync. The owner then types "${OWNER_PHRASE}" in a session opened on the folder.`;
 
 const VALUED = ["--email", "--folder", "--agent", "--url", "--key"];
 
@@ -62,7 +69,6 @@ export function parseSetup(argv) {
       out[word.slice(2)] = argv[++i];
     } else throw new Error(`${word} is not an option of setup.`);
   }
-  if (!out.folder) throw new Error("--folder is needed: the person's folder.");
   if (out.owner) {
     const other = ["email", "url", "key", "agent"].filter(name => out[name] !== undefined).map(name => `--${name}`);
     if (out.newPassword) other.push("--new-password");
@@ -177,7 +183,7 @@ export function setup(argv, { home = homedir(), signInArgs, signInPath, syncArgs
   try {
     const agents = marketplaceAgents(marketplace);
     if (!agents.includes(o.agent)) throw new StepFailed(`${o.agent} is not an agent in the ${MARKETPLACE_NAME} marketplace. Its agents are: ${agents.join(", ")}.`);
-    const folder = resolve(o.folder);
+    const folder = resolve(o.folder ?? join(home, DEFAULT_FOLDER));
     makeFolder(folder, say);
     writeAgentSetting(folder, o.agent, say);
     const plugin = o.agent.split(":")[0];
@@ -187,7 +193,7 @@ export function setup(argv, { home = homedir(), signInArgs, signInPath, syncArgs
       runClaude(["plugin", "install", `${plugin}@${MARKETPLACE_NAME}`], say);
     }
     if (o.owner) {
-      say(`Done. Start a new Code session on ${folder}, and type: Set up OKB`);
+      say(`Done. Start a new Code session on ${folder}, and type: ${OWNER_PHRASE}`);
       return 0;
     }
     const actor = readActor(folder);

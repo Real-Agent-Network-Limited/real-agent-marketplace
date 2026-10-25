@@ -48,7 +48,7 @@ Real Agent's staff work in the firm's records as actors the firm made with the `
    - **The agent:** calls `okb_find_people` with `p_scope_id` General's id and `p_name` "Real Agent", as the `okb:records` skill's section 9 describes.
    - With one person in the answer, the request is assigned to them.
    - With more than one, the agent lists their names and asks which one. Any of them will do.
-   - With none, the agent asks the person for the name of their contact at Real Agent, and calls `okb_find_people` with that name. With still none, it tells the person that the firm's administrator adds Real Agent's staff, as the business analyst's setup skill describes, and saves nothing.
+   - With none, the agent asks the person for the name of their contact at Real Agent, and calls `okb_find_people` with that name. With still none, it saves nothing. It tells the person that setup makes Real Agent's staff from Real Agent's own list, or Real Agent adds them later.
 
 **AI guided:** the agent gives the person the name of the Real Agent staff member, and waits for their approval.
 

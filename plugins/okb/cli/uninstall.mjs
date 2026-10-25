@@ -10,8 +10,9 @@
 // folder. It signs out each saved sign-in to a project one of the person's folders, the okb plugin's settings or a
 // copy names, and deletes its file; a sign-in whose sign-out fails stays. Without a working claude command, the
 // plugins, the marketplace and their settings stay. It keeps each folder the okb plugin's settings name, and each
-// folder holding an actor file in the home folder or a folder in it, with any upload folder an older setup named; it
-// deletes the actor file and the agent setting in each. --remove-work also deletes those folders, once the person
+// folder in the home folder or a folder in it that okb setup made: one holding an actor file, with any upload folder
+// an older setup named, or one whose .claude/settings.json names an agent of Real Agent's plugins or of a plugin from
+// the real-agent marketplace, signed in or not; it deletes the actor file and the agent setting in each. --remove-work also deletes those folders, once the person
 // types delete, which --yes does not answer. It leaves the programs the install added, and every other marketplace,
 // and names the uninstall guide, which gives their commands. It prints one line per item, and exits 1 when an item
 // could not be removed.
@@ -86,6 +87,10 @@ async function signOut(file) {
   }
 }
 
+/** Real Agent's own plugins, whose agents a folder okb setup made names. A firm's workflow plugins are the others
+ * installed from the real-agent marketplace. */
+export const REAL_AGENT_PLUGINS = ["business-analyst", "real-agent", "real-agent-internal", "okb"];
+
 /** The local folder a file:// git source names, or null. */
 function sourceFolder(url) {
   if (typeof url !== "string" || !url.startsWith("file://")) return null;
@@ -122,8 +127,18 @@ export function survey({ home, configDir, temp, platform, claude, localAppData =
   keep(options.upload_folder, "upload");
   if (PROJECT_REF.test(String(options.project_ref ?? ""))) refs.add(options.project_ref);
   const folders = under => { try { return readdirSync(under, { withFileTypes: true }).filter(e => e.isDirectory() && !e.name.startsWith(".")).map(e => join(under, e.name)); } catch { return []; } };
+  // A folder okb setup made names one of Real Agent's agents in its .claude/settings.json, signed in or not, such as
+  // the owner's setup folder before its first sign-in.
+  const ours = new Set([...REAL_AGENT_PLUGINS, ...plugins.map(p => p.id.slice(0, -`@${MARKETPLACE_NAME}`.length))]);
+  const namesOurAgent = folder => {
+    const agent = readJson(join(folder, ".claude", "settings.json"))?.agent;
+    return typeof agent === "string" && ours.has(agent.split(":")[0]) && agent.includes(":");
+  };
   for (const folder of folders(home).flatMap(one => [one, ...folders(one)])) {
-    if (!existsSync(join(folder, ACTOR_FILE))) continue;
+    if (!existsSync(join(folder, ACTOR_FILE))) {
+      if (namesOurAgent(folder)) keep(folder, "agent");
+      continue;
+    }
     keep(folder, "agent");
     const actor = readJson(join(folder, ACTOR_FILE));
     keep(actor?.upload_folder, "upload");

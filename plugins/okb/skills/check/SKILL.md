@@ -40,16 +40,16 @@ With the agent, the person's own instruction replaces a rule of this skill, such
 ## 1. Copy the samples
 
 - **Responsible:** the agent.
-- **Person:** copies the samples into their folder. For the folder `~/okb`, on macOS and Linux, in Terminal:
+- **Person:** copies the samples into their folder. For the folder `~/real-agent`, on macOS and Linux, in Terminal:
 
   ```sh
-  cp ~/.claude/plugins/marketplaces/real-agent/plugins/okb/skills/check/samples/check.* ~/okb/
+  cp ~/.claude/plugins/marketplaces/real-agent/plugins/okb/skills/check/samples/check.* ~/real-agent/
   ```
 
   On Windows, in PowerShell:
 
   ```powershell
-  Copy-Item "$env:USERPROFILE\.claude\plugins\marketplaces\real-agent\plugins\okb\skills\check\samples\check.*" "$env:USERPROFILE\okb"
+  Copy-Item "$env:USERPROFILE\.claude\plugins\marketplaces\real-agent\plugins\okb\skills\check\samples\check.*" "$env:USERPROFILE\real-agent"
   ```
 
 - **The agent:** calls `copy_samples`, which copies each sample into the agent folder and leaves a file already there as it is. Takes the agent folder from its `agentFolder`. Each file in `differs` is not this release's sample. The agent names it, and skips the step that reads it. Step 3 reports each program that step checks as "checked once <file> is moved out of the agent folder".

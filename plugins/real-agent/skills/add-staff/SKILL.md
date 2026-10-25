@@ -150,7 +150,7 @@ OKB holds the access templates. The `basic` template gives General, Routines and
 ## 6. The person signs in
 
 1. **Set up the person's folder.**
-   - **Person:** the member of staff runs Real Agent's install script on their own computer. The business analyst plugin's setup skill's stage 7 gives it. It takes their email, the project's address and key, and `--new-password`. Without the script, they add Real Agent's public marketplace, install the `real-agent` plugin, and run `okb setup` the same way. The setup's last step is `okb sync`. It installs the firm's own release of its plugins, and adds the workflow's plugin to their copy when their role reads its plugin scope. They install it with the command `okb sync` gives.
+   - **Person:** the member of staff runs Real Agent's install script on their own computer. The public marketplace's README gives it. It takes their email, the project's address and key, and `--new-password`. Without the script, they add Real Agent's public marketplace, install the `real-agent` plugin, and run `okb setup` the same way. The setup's last step is `okb sync`. It installs the firm's own release of its plugins, and adds the workflow's plugin to their copy when their role reads its plugin scope. They install it with the command `okb sync` gives.
    - **Database admin agent:** gives the administrator the commands for the person, with their email address filled in. It leaves the project's publishable key for the person to paste.
 2. **Check what the person sees.**
    - **Person:** the member of staff, in their folder, runs `okb okb_get_authorisations` and `okb okb_find_records p_scope_id=<scope id>`, and sends both results to the administrator.

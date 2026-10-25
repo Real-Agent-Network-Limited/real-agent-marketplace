@@ -5,6 +5,7 @@
 //
 //   node okb.mjs setup --folder <folder> --email <email> [--url <project URL> --key <publishable key>] [--agent <plugin>:<agent>] [--new-password]
 //   node okb.mjs sign-in [--new-password] [--url <project URL> --key <publishable key>] [--folder <folder> --email <email>]
+//   node okb.mjs sign-in --owner --url <project URL> --key <publishable key> --folder <setup folder>
 //   node okb.mjs sync [--project <ref> --email <email>] [--into <local folder>]
 //   node okb.mjs uninstall [--yes] [--remove-work]
 //   node okb.mjs [--project <ref> --email <email>] <name> [<argument>=<value> ...]
@@ -37,22 +38,24 @@ import { setup, SETUP_USAGE } from "./setup.mjs";
 import { runSync, SYNC_USAGE } from "./sync.mjs";
 import { uninstall, UNINSTALL_USAGE } from "./uninstall.mjs";
 
-export const USAGE = `Usage: node okb.mjs setup --folder <folder> --email <email> [--url <project URL> --key <publishable key>] [--agent <plugin>:<agent>] [--new-password]
-       node okb.mjs setup --owner --folder <folder>
+export const USAGE = `Usage: node okb.mjs setup [--folder <folder>] --email <email> [--url <project URL> --key <publishable key>] [--agent <plugin>:<agent>] [--new-password]
+       node okb.mjs setup --owner [--folder <folder>]
        node okb.mjs sign-in [--new-password] [--url <project URL> --key <publishable key>] [--folder <folder> --email <email>]
+       node okb.mjs sign-in --owner --url <project URL> --key <publishable key> --folder <setup folder>
        node okb.mjs sync [--project <ref> --email <email>] [--into <local folder>]
        node okb.mjs uninstall [--yes] [--remove-work]
        node okb.mjs [--project <ref> --email <email>] <name> [<argument>=<value> ...]
 
-setup sets up a folder for one person in their firm's OKB: the folder, where the person puts files
-for their agent and the agent keeps its work, the agent the folder works with, its plugin, and the
-person's sign-in. With --owner, before the firm has a project, it sets up the owner's folder for the
+setup sets up a folder for one person in their firm's OKB: the folder, ~/real-agent unless --folder
+names another, where the person puts files for their agent and the agent keeps its work, the agent
+the folder works with, its plugin, and the person's sign-in. With --owner, before the firm has a project, it sets up the owner's folder for the
 business analyst, with no sign-in. node okb.mjs setup --help says more.
 
 sign-in signs you in to your firm's OKB and asks for your password. In a folder you signed in with
 before, it signs you in again as that folder's person. --folder signs you in as --email, and saves the
 folder's actor file: a session opened on that folder works as that email. The first sign-in asks for the project's address and publishable key, unless --url
-and --key give them.
+and --key give them. --owner is the firm's owner's first sign-in, at the end of setup: it asks your name, your
+email and the password you choose, and makes your sign-in with the code setup left in the folder.
 
 sync installs the newest release of your firm's plugins from the Plugins scope of your firm's OKB,
 signed in as you, and updates each plugin installed from it. node okb.mjs sync --help says more.

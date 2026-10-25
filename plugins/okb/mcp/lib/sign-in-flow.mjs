@@ -1,15 +1,19 @@
 // The sign-in's steps, apart from the terminal, so a test can answer its questions.
-import { statSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, rmSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { writeActorFile } from "./actor-file.mjs";
 import { accountEmail, passwordSignIn, projectUrl, readSession, refFromUrl, setPassword, writeSession, PROJECT_REF } from "./session.mjs";
 
 export const USAGE = "Usage: node sign-in.mjs [--project <ref> --email <email>] [--url <project URL> --key <publishable key>] [--new-password] [--folder <session folder>]";
+export const OWNER_USAGE = "Usage: node sign-in.mjs --owner --url <project URL> --key <publishable key> --folder <setup folder>";
+/** The file in the owner's setup folder that holds the sign-in code setup's build.mjs wrote. */
+export const OWNER_CODE_FILE = ".okb-owner-code";
 
 export function options(args) {
-  const out = { project: undefined, email: undefined, url: undefined, key: undefined, newPassword: false, folder: undefined };
+  const out = { project: undefined, email: undefined, url: undefined, key: undefined, newPassword: false, folder: undefined, owner: false };
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--new-password") out.newPassword = true;
+    else if (args[i] === "--owner") out.owner = true;
     else if (args[i] === "--project" && args[i + 1]) out.project = args[++i];
     else if (args[i] === "--email" && args[i + 1]) out.email = args[++i];
     else if (args[i] === "--url" && args[i + 1]) out.url = args[++i];
@@ -23,6 +27,8 @@ export function options(args) {
   if (out.email !== undefined && !accountEmail(out.email)) throw new Error(`${out.email} is not an email address.`);
   if ((out.url === undefined) !== (out.key === undefined)) throw new Error(`--url and --key go together. ${USAGE}`);
   if (out.url !== undefined && !projectUrl(out.url)) throw new Error(`${out.url} is not a project URL.`);
+  if (out.owner && (out.url === undefined || out.folder === undefined || out.project !== undefined || out.email !== undefined || out.newPassword))
+    throw new Error(`--owner takes --url, --key and --folder, and no other option. ${OWNER_USAGE}`);
   // Checked before the password is asked for, so a mistyped folder costs nothing.
   if (out.folder !== undefined) {
     let folder = false;
@@ -80,4 +86,47 @@ export async function signIn({ project, email: given, url: knownUrl, key: knownK
     say(`Set auth_email to ${email} in the okb plugin's settings, or sign in again with --folder to work as ${email} in one folder.`);
   }
   return path;
+}
+
+/**
+ * The owner's first sign-in, at the end of setup's build. It reads the sign-in code build.mjs wrote to the setup
+ * folder, asks the owner's name, email and the password they choose, twice, and sends them with the code to the
+ * okb-setup hosted function, which makes their Auth user. Then it signs in with that password, saves the session
+ * and the folder's actor file, and deletes the code file. The password goes only to the project.
+ */
+export async function ownerSignIn({ url: knownUrl, key, folder }, ask, say) {
+  const url = projectUrl(knownUrl);
+  const codeFile = join(folder, OWNER_CODE_FILE);
+  let code;
+  try { code = readFileSync(codeFile, "utf-8").trim(); } catch { code = ""; }
+  if (!code) throw new Error(`${folder} holds no sign-in code. Ask your business analyst to carry on with setup.`);
+  const ref = refFromUrl(url) ?? await ask("Project reference: ");
+  if (!PROJECT_REF.test(ref)) throw new Error(`${ref} is not a project reference.`);
+  say("Choose your own sign-in to your firm's Real Agent knowledge base. Your password goes only to your firm's Supabase project.");
+  const name = (await ask("Your name: ")).trim();
+  if (!name) throw new Error("your name is needed. Nothing was changed.");
+  const email = accountEmail(await ask("Your email: "));
+  if (!email) throw new Error("that is not an email address. Nothing was changed.");
+  const password = await ask("Choose a password: ", true);
+  if (password !== await ask("The password again: ", true)) throw new Error("the two passwords differ. Nothing was changed.");
+
+  let made;
+  try {
+    const response = await fetch(`${url}/functions/v1/okb-setup/owner`, {
+      method: "POST", headers: { apikey: key, "Content-Type": "application/json" }, body: JSON.stringify({ code, name, email, password }),
+    });
+    made = await response.json().catch(() => ({ ok: false, problem: `the project answered HTTP ${response.status}` }));
+  } catch (err) {
+    throw new Error(`the project could not be reached: ${err?.cause?.code ?? err?.message ?? err}`);
+  }
+  if (!made?.ok) throw new Error(made?.problem ?? "the project refused the sign-in.");
+
+  const session = await passwordSignIn(url, key, email, password);
+  if (!session.ok) throw new Error(`your sign-in was made, but signing in with it failed: ${session.problem}`);
+  if (accountEmail(session.body.user?.email) !== email) throw new Error(`Supabase signed in ${session.body.user?.email}, not ${email}. Nothing was saved.`);
+  writeSession(ref, email, { projectRef: ref, url, publishableKey: key, email, refreshToken: session.body.refresh_token });
+  writeActorFile(folder, { projectRef: ref, email });
+  rmSync(codeFile, { force: true });
+  say(`Signed in as ${email}. Go back to your business analyst and type: done`);
+  return email;
 }

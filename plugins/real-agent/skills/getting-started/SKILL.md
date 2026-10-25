@@ -5,7 +5,7 @@ description: Use when a new member of staff asks to get started, or for training
 
 # Getting started
 
-Getting started teaches a new member of staff to work with Real Agent, in their own folder and in their firm's organisational knowledge base (OKB). OKB is the firm's own Supabase project: its records, its files, its glossary and its data dictionary. Every lesson uses the person's own records, so nothing is a demonstration. The firm's first session is a training call with Real Agent, and this skill can be run any time after it.
+Getting started teaches a new member of staff to work with Real Agent, in their own folder and in their firm's Real Agent knowledge base. The knowledge base is in the firm's own Supabase project, and holds its records, its files, its glossary and its data dictionary. Its technical name is OKB, which the `okb` command and some messages use. The lessons call it the Real Agent knowledge base. Every lesson uses the person's own records, so nothing is a demonstration. The firm's first session is a training call with Real Agent, and this skill can be run any time after it.
 
 The lessons run in this order:
 
@@ -33,7 +33,7 @@ The person chooses the mode.
 
 Each step below gives a **Person** line and a line for the agent.
 
-With the agent, the person's own instruction replaces a rule of this skill, such as the order of the lessons. The agent names the rule once and does as told. A refusal from OKB or a tool still stands, and the agent gives it to the person with what they can do instead.
+With the agent, the person's own instruction replaces a rule of this skill, such as the order of the lessons. The agent names the rule once and does as told. A refusal from the knowledge base or a tool still stands, and the agent gives it to the person with what they can do instead.
 
 ## 1. Before the first lesson
 
@@ -73,12 +73,12 @@ The database operator's own tools run on the person's computer. Python 3 draws i
 
 ## 3. Lesson 2: Claude desktop, and where to find the database operator
 
-Claude desktop is Anthropic's app for the Mac and Windows. Its Code tab runs Claude Code: the person types a request, and an agent carries it out in a folder on the computer. The person's folder holds their sign-in to OKB, and its agent is the database operator.
+Claude desktop is Anthropic's app for the Mac and Windows. Its Code tab runs Claude Code: the person types a request, and an agent carries it out in a folder on the computer. The person's folder holds their sign-in to the Real Agent knowledge base, and its agent is the database operator.
 
 1. **Open the folder in Claude desktop.**
    - **Person:** opens Claude desktop, picks the Code tab, and picks their folder, such as `okb` in their home folder.
    - **The agent:** gives the person the folder's full path, from `whoami`'s `agentFolderPath`.
-2. **Meet the database operator.** It works in OKB as the person, within their own grants, and shows each change before saving it.
+2. **Meet the database operator.** It works in the Real Agent knowledge base as the person, within their own grants, and shows each change before saving it.
    - **Person:** types "Who am I?" in a new session.
    - **The agent:** answers as the database operator does: the person's name, the project and whether they are restricted to their grants.
    - In another folder, or in a session whose agent is not the database operator, the person types `@real-agent:database-operator` before the message.
@@ -117,7 +117,7 @@ Each of the firm's workflows is one plugin with one agent, and each routine in i
    - **The agent:** asks the person which agents the list shows. It names the database operator, the database admin, the business analyst and each workflow agent among them.
 2. **Call the business analyst with a question it answers without changing anything.**
    - **Person:** types `@business-analyst:business-analyst Is setup finished?`
-   - **The agent:** none. The business analyst answers, from the setup skill's section 9. The agent asks the person for the answer.
+   - **The agent:** none. The business analyst answers, as the setup skill's status requests say. The agent asks the person for the answer.
 3. **Save the lesson,** with the business analyst's answer quoted.
    - **Person:** saves the lesson as section 1 says.
    - **The agent:** saves the lesson as section 1 says.
@@ -126,7 +126,7 @@ Each of the firm's workflows is one plugin with one agent, and each routine in i
 
 ## 6. Lesson 5: A question about your records
 
-The database operator answers only from what OKB returns: the firm's records and the passages its file search finds. If OKB holds no answer, it says so.
+The database operator answers only from what the Real Agent knowledge base returns: the firm's records and the passages its file search finds. If the knowledge base holds no answer, it says so.
 
 1. **Ask about the tasks assigned to the person.**
    - **Person:** types "What is assigned to me?" Without the agent, runs `okb okb_get_assigned`.
@@ -142,7 +142,7 @@ The database operator answers only from what OKB returns: the firm's records and
 
 ## 7. Lesson 6: Finding and uploading a file
 
-Each scope keeps its files in a bucket of its own, named after the scope's code. The person uploads a file from their own folder, and OKB's file search finds it by the words and meaning of what it says.
+Each scope keeps its files in a bucket of its own, named after the scope's code. The person uploads a file from their own folder. File search then finds it by the words and meaning of what it says.
 
 1. **Choose a file the firm is happy to keep in General.** A price list or a branch leaflet will do. A file with a client's personal details will not.
    - **Person:** copies the file into their folder, directly, not into a folder within it.
@@ -161,7 +161,7 @@ Each scope keeps its files in a bucket of its own, named after the scope's code.
 
 ## 8. Lesson 7: The first install, and updating with plugins
 
-The first install comes from Real Agent's public marketplace. The person added it, installed the `real-agent` plugin, and signed in with `okb setup`, as the business analyst's setup skill describes. The last step of `okb setup` was `okb sync`. It installed the firm's own release of its plugins from the Plugins scope, in place of the public copy. After that, each update comes from the firm's own Supabase project. Real Agent publishes each release of the firm's plugins to the Plugins scope, and the `real-agent:plugins` skill installs it.
+The first install comes from Real Agent's public marketplace. The person added it, installed the `real-agent` plugin, and signed in with `okb setup`, as the public marketplace's README describes. The last step of `okb setup` was `okb sync`. It installed the firm's own release of its plugins from the Plugins scope, in place of the public copy. After that, each update comes from the firm's own Supabase project. Real Agent publishes each release of the firm's plugins to the Plugins scope, and the `real-agent:plugins` skill installs it.
 
 1. **See what is installed.**
    - **Person:** in Terminal or PowerShell, runs `claude plugin list`, and reads each plugin's version.
