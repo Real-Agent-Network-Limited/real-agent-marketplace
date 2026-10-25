@@ -43,7 +43,7 @@ The owner reads plain sentences only: no code block, table, SQL, command, test o
 
 The owner's messages, in order, in a run with no failure:
 
-- "I found your Supabase project <name>. Shall I set up Real Agent in <name>?"
+- "I found your Supabase project <name>. Shall I set up Real Agent in <name>?" With no project yet, this is instead "Shall I create a Supabase project called <organisation name> in London, and set up Real Agent in it? On your Free plan it costs nothing.", then "Creating your project. This takes a few minutes."
 - The progress lines from section 2, one per step.
 - "This makes your own account in your knowledge base and signs you in. Click Run on the line below. It asks your name, your email and a password you choose. The password goes only to Supabase. When it says you're signed in, type done here." Below it comes the sign-in command, alone, in one fenced code block tagged `bash`. The Claude desktop app gives that block a Run button, which runs it in the app's Terminal, where its password prompt works.
 - The progress lines from section 4.
@@ -57,32 +57,34 @@ Setup saves each loose end as an open task in Administration, assigned to the ow
 
 ## Before setup
 
-The owner needs a Supabase account and project, and Supabase connected to Claude. When the Supabase connector's tools are missing, or `list_projects` gives no project, the business analyst takes the owner through the steps below. It sends one step per reply, and waits for the owner to say it is done before the next. It skips each step already done: with the connector there and no project, it starts at step 2.
+The owner needs a Supabase account, with Supabase connected to Claude. The business analyst creates the project itself. When the Supabase connector's tools are missing, it takes the owner through the two steps below. It sends one step per reply, and waits for the owner to say it is done before the next. It skips a step already done.
+
+Each of these replies is the step's message as written below, and nothing else. The business analyst judges only by what the connector shows now. It never mentions an earlier session, a project it cannot see, or another organisation.
 
 1. **The account.**
    - **Person:** creates a Supabase account.
    - **Business analyst agent:** says "First, create a free Supabase account at [supabase.com](https://supabase.com). Tell me when you have."
-2. **The project.**
-   - **Person:** creates a project, and saves its database password in a password manager.
-   - **Business analyst agent:** says "Next, create a project in Supabase. Name it after your business, and choose the region nearest you, such as London. Supabase shows a database password once, so save it in your password manager. The Free plan works, but Supabase pauses a free project nobody uses for a week. A paid plan keeps it running. Tell me when the project is ready."
-3. **The connector.**
+2. **The connector.**
    - **Person:** connects Supabase to Claude.
-   - **Business analyst agent:** says "Last, connect Supabase to Claude in this app's connectors, and choose your business's Supabase organisation. Tell me when it's connected."
+   - **Business analyst agent:** says "Next, connect Supabase to Claude in this app's connectors, and choose your business's Supabase organisation. Tell me when it's connected."
 
-After step 3 the business analyst calls `list_projects` itself. When the connector's tools are not in the session, it says "Supabase is connected, but this session started before it. Start a new Code session on this folder, and type Set up Real Agent again." Then it stops. Otherwise it goes straight on to section 1.
+After step 2 the business analyst calls `list_projects` itself. When the connector's tools are not in the session, it says "Supabase is connected, but this session started before it. Start a new Code session on this folder, and type Set up Real Agent again." Then it stops. Otherwise it goes straight on to section 1.
 
 **AI guided:** the business analyst checks this silently, and speaks only when a step is missing.
 
-## 1. Find the project and agree
+## 1. Find or create the project, and agree
 
 1. **Find the project.**
    - **Person:** opens the project in the Supabase dashboard.
-   - **Business analyst agent:** calls `list_projects`. With several projects, its one question is "Which of your Supabase projects is for Real Agent: <name>, <name> or <name>?" With one, it calls `get_project`, and goes on only when its status is `ACTIVE_HEALTHY`. It reads `state.sql` with `Read`, and runs it through `execute_sql`.
+   - **Business analyst agent:** calls `list_projects`. With several projects, its one question is "Which of your Supabase projects is for Real Agent: <name>, <name> or <name>?" With one, it calls `get_project`, and goes on only when its status is `ACTIVE_HEALTHY`. It reads `state.sql` with `Read`, and runs it through `execute_sql`. With none, it creates one, as step 3 says.
 2. **Ask once.**
    - **Person:** decides to go ahead.
    - **Business analyst agent:** with `setup_finished` true, says "Real Agent is already set up in <name>." and stops. With `okb_built` false, asks "Shall I set up Real Agent in <name>?" With `okb_built` true and `setup_finished` false, an earlier attempt stopped part way. When `records` and `files` are both 0, it asks "An earlier setup in <name> stopped part way. Shall I clear it and set up Real Agent again?" Otherwise it says "<name> already holds Real Agent records from an earlier setup, so I've stopped. Real Agent needs to look at it." and stops, as "What the owner reads" says for a failure.
+3. **Create the project, when there is none.**
+   - **Person:** creates a project in the Supabase dashboard, in the London region. They leave automatic table exposure off, and save the database password in a password manager.
+   - **Business analyst agent:** calls `list_organizations`. With several, its one question is "Which of your Supabase organisations is for your business: <name> or <name>?" It calls `get_cost` for a project in that organisation, and asks once: "Shall I create a Supabase project called <organisation name> in London, and set up Real Agent in it? <cost sentence>" The cost sentence is "On your Free plan it costs nothing." for a quote of 0, and otherwise "Supabase charges <amount> a <month or hour> for it." When the owner names another project name or region, it uses theirs. Once the owner agrees, it calls `confirm_cost` for a quote above 0, then `create_project` in `eu-west-2`, or the region the owner named. It says "Creating your project. This takes a few minutes." and calls `get_project` until the status is `ACTIVE_HEALTHY`. Then it runs `state.sql` as step 1 does, and goes straight on to section 2, with no second question. Supabase may refuse, for example when the organisation already has its two free projects. Then it gives Supabase's own reason in one plain sentence, and stops.
 
-The owner's agreement covers every step up to their sign-in, and the reset when the question named it.
+The owner's agreement covers every step up to their sign-in, and the reset when the question named it. When the business analyst created the project, the agreement to create it covers setup too.
 
 **AI guided:** once the owner agrees, the business analyst asks nothing until section 3.
 
