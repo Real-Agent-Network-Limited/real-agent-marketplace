@@ -187,6 +187,8 @@ function Find-WingetPath {
     $signature = Get-AuthenticodeSignature -LiteralPath $exe
     if ($signature.Status -ne 'Valid' -or "$($signature.SignerCertificate.Subject)" -notmatch '^CN=Microsoft Corporation,') { continue }
     $chain = New-Object Security.Cryptography.X509Certificates.X509Chain
+    # A network that blocks the certificate revocation lists fails an online check. The path and signature pin the file.
+    $chain.ChainPolicy.RevocationMode = 'NoCheck'
     if (-not $chain.Build($signature.SignerCertificate)) { continue }
     $root = $chain.ChainElements[$chain.ChainElements.Count - 1].Certificate.Subject
     if ($root -match '^CN=Microsoft Root Certificate Authority') { return $exe }

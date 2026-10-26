@@ -9,8 +9,9 @@
 // when every file matches. A folder with no MANIFEST is a publish under way and is passed over; a release
 // that fails its check is reported and passed over, and the next older one is taken. It then reads every
 // workflow plugin scope, plugins_<workflow>, the person's grants reach, as okb_get_scopes lists them, and puts
-// the newest release of each into the copy at plugins/<name>, listed in the copy's marketplace.json. A workflow
-// plugin whose scope the person no longer reaches is taken out of the copy. The copy, by default
+// the newest release of each into the copy at plugins/<name>, listed in the copy's marketplace.json. A release whose
+// plugin.json names another plugin is passed over, with its own line. A workflow plugin whose scope the person no
+// longer reaches is taken out of the copy. The copy, by default
 // okb-marketplace/<project reference> in the home folder, is a Git repository, and each release is
 // committed to it. sync then registers the copy as the real-agent marketplace in Claude Code's settings,
 // as a git source with a file:// URL, in place of Real Agent's public copy. It runs
@@ -187,6 +188,17 @@ export async function sync(access, local, { remove = folder => removeFolder(fold
   return { from, to: null, failed };
 }
 
+/**
+ * Why the plugin at folder/plugins/<name> may not be installed as name: its plugin.json is missing or unreadable, or
+ * names another plugin. null when its plugin.json names it name.
+ */
+export function misnamed(folder, name) {
+  let named;
+  try { ({ name: named } = JSON.parse(readFileSync(join(folder, "plugins", name, ".claude-plugin", "plugin.json"), "utf8"))); }
+  catch { return `it has no readable plugins/${name}/.claude-plugin/plugin.json`; }
+  return named === name ? null : `its plugin.json names the plugin ${JSON.stringify(named)}, not ${name}`;
+}
+
 /** The file in the copy naming each workflow plugin it holds, with its scope and release. */
 export const WORKFLOWS_FILE = "WORKFLOWS.json";
 
@@ -218,16 +230,17 @@ function listWorkflow(local, name, entry) {
  * Puts the newest release of each workflow plugin whose scope, plugins_<workflow>, the person's grants reach into the
  * copy at local: its folder at plugins/<name>, its entry in the copy's marketplace.json, and its scope and release in
  * WORKFLOWS.json. A release the copy holds already is not downloaded again. A release with no MANIFEST, or one whose
- * files do not match it, is passed over for the next older one. Each workflow plugin the copy holds whose scope the
- * person no longer reaches is taken out of it. Returns { added, removed, failed }: added as [name, release, scope],
- * removed as [name, scope], and failed as [scope, release, problems].
+ * files do not match it, is passed over for the next older one, and so is one whose plugin.json names another plugin.
+ * Each workflow plugin the copy holds whose scope the person no longer reaches is taken out of it. Returns
+ * { added, removed, failed, passed }: added as [name, release, scope], removed as [name, scope], failed as
+ * [scope, release, problems], and passed as [scope, release, reason], each release whose plugin.json names another plugin.
  */
 export async function syncWorkflows(access, local, { remove = folder => removeFolder(folder), scopes = pluginScopes } = {}) {
   const reached = await scopes(access);
   const held = readHeld(local);
   // The plugins the Plugins scope's release lists, which no workflow plugin's scope may replace.
   const fromPlugins = new Set(listedPlugins(local).filter(name => !Object.hasOwn(held, name)));
-  const added = [], removed = [], failed = [];
+  const added = [], removed = [], failed = [], passed = [];
   const stage = `${local}.workflows`;
   remove(stage);
   try {
@@ -250,6 +263,9 @@ export async function syncWorkflows(access, local, { remove = folder => removeFo
           : fromPlugins.has(name) ? `it holds ${name}, which the Plugins scope's release already gives`
           : pluginScope(name) !== scope ? `it holds ${name}, and the ${scope} scope keeps only the plugin it is named for` : null;
         if (refused) { remove(into); failed.push([scope, release, [refused]]); continue; }
+        // A workflow plugin keeps its own name: a release whose plugin.json names another plugin is passed over.
+        const other = misnamed(into, name);
+        if (other) { remove(into); passed.push([scope, release, other]); continue; }
         const target = join(local, "plugins", name);
         remove(target);
         mkdirSync(dirname(target), { recursive: true });
@@ -271,7 +287,7 @@ export async function syncWorkflows(access, local, { remove = folder => removeFo
     removed.push([name, h?.scope]);
   }
   if (added.length || removed.length) writeFileSync(join(local, WORKFLOWS_FILE), `${JSON.stringify(held, null, 2)}\n`);
-  return { added, removed, failed };
+  return { added, removed, failed, passed };
 }
 
 const GIT = ["-c", "core.autocrlf=false", "-c", "user.name=okb-sync", "-c", "user.email=okb-sync@localhost"];
@@ -532,11 +548,13 @@ export async function runSync(argv, { cwd = process.cwd(), home = homedir(), say
   }
   say(to ? `Your copy in ${local} is now release ${to}${from ? `, from ${from}` : ""}.` : `Your copy in ${local} is up to date, at release ${from}.`);
   // Each workflow plugin whose own scope the person's grants reach.
-  let workflows = { added: [], removed: [], failed: [] };
+  let workflows = { added: [], removed: [], failed: [], passed: [] };
   try { workflows = await syncWorkflows(session.access, local); }
   catch (err) { say(`${err instanceof Error ? err.message : err}\nYour workflow plugins stay as they are.`); }
   for (const [scope, release, problems] of workflows.failed)
     say(`Release ${release ? `${release} ` : ""}in the ${scope} scope is incomplete, and was passed over:\n${problems.map(p => `  ${p}`).join("\n")}`);
+  for (const [scope, release, reason] of workflows.passed)
+    say(`Release ${release} in the ${scope} scope is passed over: ${reason}. Nothing from it is installed.`);
   for (const [name, release, scope] of workflows.added) say(`Your copy holds ${name} from release ${release}, in the ${scope} scope.`);
   for (const [name, scope] of workflows.removed)
     say(`${name}: your grants no longer reach the ${scope} scope, so it is gone from your copy. Remove it with: claude plugin uninstall ${name}@${MARKETPLACE_NAME}`);

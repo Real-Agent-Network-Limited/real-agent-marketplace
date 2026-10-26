@@ -16,7 +16,7 @@ import { dirname, join } from "node:path";
 export const RELEASE_NAME = /^\d{8}-\d{6}-[0-9a-f]{7,40}$/;
 export const RELEASES_BUCKET = "plugins";
 /** Real Agent's own plugins, which okb sync takes only from the Plugins scope, never from a workflow plugin's scope. */
-export const OWN_PLUGIN_NAMES = ["real-agent", "okb", "business-analyst", "project"];
+export const OWN_PLUGIN_NAMES = ["real-agent", "okb", "business-analyst", "real-agent-project"];
 /** The start of the code of each workflow plugin's own scope. */
 export const PLUGIN_SCOPE_PREFIX = "plugins_";
 /** A workflow plugin's own scope: plugins_ and its name, each hyphen an underscore. */
