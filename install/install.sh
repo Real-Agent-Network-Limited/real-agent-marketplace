@@ -123,6 +123,18 @@ program() {
 tools() { xcode-select -p >/dev/null 2>&1; }
 real() { local p; p="$(command -v "$1")" || return 1; [ "$p" != "/usr/bin/$1" ] || tools; }
 
+# Apple's own install of the Command Line Tools: it opens Apple's dialog, then waits until the tools are in, up to an hour.
+TOOLS_POLL="${TOOLS_POLL:-10}"
+install_tools() {
+  xcode-select --install || true
+  local waited=0
+  until tools; do
+    sleep "$TOOLS_POLL"; waited=$((waited + TOOLS_POLL))
+    [ "$waited" -ge 3600 ] && return 1
+  done
+  return 0
+}
+
 brew_path() {
   local b
   for b in /opt/homebrew/bin/brew /usr/local/bin/brew; do [ -x "$b" ] && { echo "$b"; return 0; }; done
@@ -184,6 +196,13 @@ model() {
 have_model() { model >/dev/null; }
 install_model() { fetch "$MODEL_URL" "$OWN_MODEL" "$MODEL_SHA256"; }
 
+if ! tools; then
+  echo "Your Mac will now ask to install Apple's command line developer tools. Click Install, then Agree. This waits until they are installed, which can take 5 to 15 minutes."
+fi
+if ! program "Apple's command line developer tools" tools install_tools "xcode-select --install"; then
+  echo "Git and Python come with Apple's command line developer tools. Install them, then run this again. The log is $LOG."
+  exit 1
+fi
 if ! program "Homebrew" have_brew install_brew '/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'; then
   echo "Each other program is installed with Homebrew. Install it, then run this again. The log is $LOG."
   exit 1
