@@ -8,7 +8,7 @@ description: Use when a person wants to see where a plan in OKB stands as a boar
 A **progress board** draws one plan in OKB as a single HTML page, which opens in a browser with no network. A **model board** draws any other model record as rows of cards, as section 2 says.
 
 - The plan is the page's header, with the time OKB was read. Hovering the time shows the save number.
-- The plan's purpose statement is under the header, as the `project:purpose` skill writes it. It opens folded to its first line, ending in Show more. Clicking it shows the whole purpose and Show less.
+- The plan's purpose statement is under the header, as the `real-agent-project:purpose` skill writes it. It opens folded to its first line, ending in Show more. Clicking it shows the whole purpose and Show less.
 - A timetable strip shows each part of the plan against the plan's dates, with a line at the time OKB was read.
 - The board has a column for each state: Pending, In progress, Paused, Completed and Cancelled. Cancelled is folded until clicked.
 - Each part of the plan directly under it is a row, in index order. The first column names the part by its index and title, with its dates, its state and its badges. It is headed Plan, Task, or Plan or task. A part that is itself a plan holds a card for every activity under it, in index order. A task holds its own card. An activity with no index comes after every indexed one beside it, by start date then title.
@@ -57,13 +57,13 @@ With the agent, the person's own instruction replaces a rule of this skill, such
 
 - **Responsible:** the person, who must be able to read the plan's scope.
 - **Person:** names the plan. Without the agent, in their agent folder:
-  1. Finds the plan's record id with `okb okb_find_records p_kind=activity p_title="<words of the plan's title>"`, and its purpose statement as the `project:purpose` skill's section 1 says.
+  1. Finds the plan's record id with `okb okb_find_records p_kind=activity p_title="<words of the plan's title>"`, and its purpose statement as the `real-agent-project:purpose` skill's section 1 says.
   2. Reads the plan's scope into a file: `okb okb_get_progress p_cutoff=null p_observed_at=null p_cursor=null p_limit=100 p_scope_id=<scope id> result_file=progress-1.json`
   3. While the reply's `summary` has a `next_cursor`, reads the next page into the next file, with the first page's `cutoff` and `observed_at`: `okb okb_get_progress p_cutoff=<cutoff> p_observed_at=<observed_at> p_cursor=<next_cursor> p_limit=100 p_scope_id=<scope id> result_file=progress-2.json`
   4. Draws the board, giving `progress_files` once for each file: `okb draw_board progress_files=progress-1.json page_file=board.html plan_id=<plan record id> purpose="<purpose statement>"`
   5. Opens `board.html` in a browser.
 - **Agent:**
-  1. Finds the plan's purpose statement with the `project:purpose` skill's section 1. With none, writes and saves one with that skill. The board waits until the person agrees a statement.
+  1. Finds the plan's purpose statement with the `real-agent-project:purpose` skill's section 1. With none, writes and saves one with that skill. The board waits until the person agrees a statement.
   2. Follows `okb:records` section 2, calling `okb_get_progress` with `p_scope_id` set to the plan's scope, `p_limit` 100, and `result_file` set to a new file in the agent folder, such as `<agent folder>/<name>.progress-1.json`.
   3. While the answer's `next_cursor` is not null, calls `okb_get_progress` again with `p_cursor` set to it. Sets `p_cutoff` and `p_observed_at` to the first answer's `cutoff` and `observed_at`, and `result_file` to a new file, such as `<agent folder>/<name>.progress-2.json`.
   4. Calls `draw_board` with every progress file in `progress_files`, and a new `page_file`, such as `<agent folder>/<name>.board.html`. Sets `plan_id` to the plan's record id, and `purpose` to the purpose statement's text.

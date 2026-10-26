@@ -10,7 +10,7 @@ A document becomes a PDF in two steps. First it is written as an HTML page in th
 - The glossary and the data dictionary are written by the `draw_reference` tool, from the rows `okb_get_reference` returns, as section 1 says.
 - An SOP, a standard operating procedure, for one routine is written by the `draw_sop` tool, from the routine's approved model version, as section 2 says.
 - Any other document, such as a proposal or a roadmap, is written by the agent as a page, as section 3 says.
-- An executive report is written in Markdown, and the okb plugin's `report_page` tool makes its page, as the project plugin's `report` skill says. Its deck is a page of slides, which `print_pdf` prints with `size` `slide`.
+- An executive report is written in Markdown, and the okb plugin's `report_page` tool makes its page, as the real-agent-project plugin's `report` skill says. Its deck is a page of slides, which `print_pdf` prints with `size` `slide`.
 
 The scripts beside this skill do the work, with Python 3.
 
