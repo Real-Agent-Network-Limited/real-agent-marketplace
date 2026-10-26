@@ -43,7 +43,15 @@ def item_state(item):
 
 
 def when(value):
-    return datetime.fromisoformat(value.replace("Z", "+00:00")) if value else None
+    return parse_iso(value) if value else None
+
+def parse_iso(value):
+    """An ISO time as Python 3.9's fromisoformat takes it: a Z as +00:00, and a fraction of seconds padded or cut to six
+    digits, since the database writes as few as it needs and Python before 3.11 reads only three or six."""
+    value = value.replace("Z", "+00:00")
+    value = re.sub(r"\.(\d+)", lambda m: "." + (m.group(1) + "000000")[:6], value, count=1)
+    return datetime.fromisoformat(value)
+
 
 
 def index_of(item):

@@ -196,6 +196,14 @@ model() {
 have_model() { model >/dev/null; }
 install_model() { fetch "$MODEL_URL" "$OWN_MODEL" "$MODEL_SHA256"; }
 
+# Real Agent needs macOS 14 or later: Homebrew has ready-built programs only for the macOS versions it supports, and
+# on an older Mac builds each from source, which takes hours and often fails. Nothing is installed on an older Mac.
+OLDEST_MACOS="${OLDEST_MACOS:-14}"
+macos="$(sw_vers -productVersion 2>/dev/null)"
+if [ "${macos%%.*}" -lt "$OLDEST_MACOS" ] 2>/dev/null; then
+  echo "Real Agent needs macOS $OLDEST_MACOS or later, and this Mac has macOS $macos. Update macOS in System Settings, General, Software Update, then run this line again."
+  exit 1
+fi
 if ! tools; then
   echo "Your Mac will now ask to install Apple's command line developer tools. Click Install, then Agree. This waits until they are installed, which can take 5 to 15 minutes."
 fi
