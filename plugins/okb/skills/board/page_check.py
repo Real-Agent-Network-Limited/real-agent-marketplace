@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import time
+import re
 from datetime import datetime, timedelta, timezone
 
 # Where a Chromium browser is installed, in the order tried. A name without a separator is looked
@@ -110,7 +111,7 @@ BST = timezone(timedelta(hours=1), "BST")
 def uk_time(value):
     """A stored time in UK time, as OKB shows it, with the standard library alone. The instant is
     unchanged; only its clock reads UK time, at +01:00 in summer and +00:00 in winter."""
-    t = datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(GMT)
+    t = parse_iso(value).astimezone(GMT)
 
     def last_sunday(month):
         end = datetime(t.year, month, 31, 1, tzinfo=GMT)
@@ -422,3 +423,9 @@ def check_state_machine(page_path, title, line, graph_data, sm_data):
     lines.extend(findings_lines(findings))
     write(page_path, lines)
     return f"outline written; {len(findings)} findings; {picture(page_path, 1100)}"
+def parse_iso(value):
+    """An ISO time as Python 3.9's fromisoformat takes it: a Z as +00:00, and a fraction of seconds padded or cut to six
+    digits, since the database writes as few as it needs and Python before 3.11 reads only three or six."""
+    value = value.replace("Z", "+00:00")
+    value = re.sub(r"\.(\d+)", lambda m: "." + (m.group(1) + "000000")[:6], value, count=1)
+    return datetime.fromisoformat(value)
