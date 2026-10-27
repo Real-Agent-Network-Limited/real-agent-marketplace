@@ -16,7 +16,9 @@
 // Agent's staff real-agent.ts lists, it reuses the Auth user Auth holds for the email, or else makes a one-time
 // invitation code, as okb-invite makes one: three groups of four from an alphabet with no look-alike letters or digits,
 // valid for 7 days. It sends no email. It sends each code to Real Agent's website, ACCESS_URL, as JSON { project_url,
-// email, code, expires }, with a 5-second limit: the owner's agreement to setup covers this. It records each person with
+// email, code, expires, firm, owner_name, owner_email }, with a 5-second limit: the owner's agreement to setup covers
+// this. firm is the firm's name, from okb_setup.firm, which build.mjs approve keeps, and the owner's name and email
+// are theirs from this sign-in, so Real Agent knows whose project the code opens. It records each person with
 // an Auth user in okb_setup.person, and each code's SHA-256 alone in okb_setup.staff_code, for first-administrator.sql,
 // which makes the actors and the invitations okb-join spends. It records each loose end in okb_setup.open_task, which
 // first-administrator.sql saves as an open task for the owner: "Send Real Agent its invitation code" for each code the
@@ -78,12 +80,12 @@ export function openTasks(staff: { name: string; email: string }[], coded: { nam
 }
 
 /** Sends one code to Real Agent's website. True only when it answers 2xx within 5 seconds. */
-async function deliver(c: { email: string; code: string; expires_at: string }): Promise<boolean> {
+async function deliver(c: { email: string; code: string; expires_at: string }, who: { firm: string; owner_name: string; owner_email: string }): Promise<boolean> {
   if (!ACCESS_URL) return false;
   try {
     const res = await fetch(ACCESS_URL, {
       method: "POST", headers: { "Content-Type": "application/json" }, signal: AbortSignal.timeout(5000),
-      body: JSON.stringify({ project_url: PROJECT, email: c.email, code: c.code, expires: c.expires_at }),
+      body: JSON.stringify({ project_url: PROJECT, email: c.email, code: c.code, expires: c.expires_at, ...who }),
     });
     await res.body?.cancel();
     return res.ok;
@@ -146,8 +148,10 @@ async function owner(db: any, body: Record<string, unknown>): Promise<Response> 
     coded.push({ name: one.name, email: address, code, sha256: await codeHash(code), expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString() });
   }
   // Each code Real Agent's website takes needs nothing from the owner. Any other goes in the summary and an open task.
+  const [firm] = coded.length ? await db`select name from okb_setup.firm` : [];
+  const who = { firm: firm?.name ?? "", owner_name: name, owner_email: email };
   const unsent: typeof coded = [];
-  for (const c of coded) if (!await deliver(c)) unsent.push(c);
+  for (const c of coded) if (!firm || !await deliver(c, who)) unsent.push(c);
   const tasks = openTasks(STAFF, unsent);
   // deno-lint-ignore no-explicit-any
   await db.begin(async (tx: any) => {

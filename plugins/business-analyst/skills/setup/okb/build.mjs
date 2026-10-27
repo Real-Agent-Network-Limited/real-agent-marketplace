@@ -3,7 +3,7 @@
 // Node alone: no Supabase command-line tool, and no password, key or token beyond the project's publishable key,
 // which is public.
 //
-//   node build.mjs approve --ref <project reference> --folder <setup folder> [--reset]
+//   node build.mjs approve --ref <project reference> --folder <setup folder> --firm <firm's name> [--reset]
 //   node build.mjs run --url <project URL> [--key <publishable key>] [--ref <project reference>] <file> [<file> ...]
 //   node build.mjs functions
 //   node build.mjs real-agent-code --folder <setup folder>
@@ -11,7 +11,8 @@
 // approve prints one SQL statement for the Supabase connector's execute_sql. It makes the okb_setup schema, which
 // the okb-setup hosted function reads, and approves this folder's setup files by their SHA-256, each to run once:
 // setup.sql, file-search.sql, file-search-scopes.sql, schedule.sql with the project reference filled in, and
-// first-administrator.sql, with reset.sql too for --reset. It also writes a new sign-in code to the setup folder's
+// first-administrator.sql, with reset.sql too for --reset. It keeps the firm's name, --firm, in okb_setup.firm, which
+// okb-setup sends Real Agent's website with each code, so Real Agent knows whose project it is. It also writes a new sign-in code to the setup folder's
 // .okb-owner-code, readable by the owner alone, for the owner's first sign-in, and approves the code by its SHA-256
 // for a day. The code itself is never printed.
 //
@@ -58,7 +59,7 @@ export const FUNCTIONS = [
   { name: "okb-upgrade", verify_jwt: true, files: ["index.ts", "upgrade-key.ts"] },
 ];
 
-export const USAGE = `Usage: node build.mjs approve --ref <project reference> --folder <setup folder> [--reset]
+export const USAGE = `Usage: node build.mjs approve --ref <project reference> --folder <setup folder> --firm <firm's name> [--reset]
        node build.mjs run --url <project URL> [--key <publishable key>] [--ref <project reference>] <file> [<file> ...]
        node build.mjs functions
        node build.mjs real-agent-code --folder <setup folder>`;
@@ -75,9 +76,14 @@ export function fileText(name, ref, folder = HERE) {
   return text.replaceAll("<project reference>", ref);
 }
 
+/** A firm's name as Real Agent's website takes it: 1 to 200 characters, with no control character. */
+export const FIRM = /^[^\p{Cc}]{1,200}$/u;
+
 /** The statement that makes okb_setup and approves the files and the owner's code, and the code file it wrote. */
-export function approve({ ref, folder, reset = false }, { here = HERE, code = randomBytes(32).toString("hex") } = {}) {
+export function approve({ ref, folder, firm, reset = false }, { here = HERE, code = randomBytes(32).toString("hex") } = {}) {
   if (!PROJECT_REF.test(ref ?? "")) throw new Error(`${ref ?? "--ref"} is not a project reference.`);
+  const name = (firm ?? "").trim();
+  if (!FIRM.test(name)) throw new Error(`--firm needs the firm's name, of 1 to 200 characters.`);
   if (!folder || !existsSync(folder)) throw new Error(`${folder ?? "--folder"} is not a folder.`);
   const codeFile = join(resolve(folder), OWNER_CODE_FILE);
   writeFileSync(codeFile, `${code}\n`, { mode: 0o600 });
@@ -91,10 +97,13 @@ create table if not exists okb_setup.owner_code (sha256 text primary key, expire
 create table if not exists okb_setup.person (auth_user_id uuid primary key, name text not null, email text not null, role text not null check (role in ('owner', 'real_agent')));
 create table if not exists okb_setup.open_task (position int primary key, title text not null, description text not null, completion_requirements text not null);
 create table if not exists okb_setup.staff_code (email text primary key, name text not null, code_sha256 text not null, expires_at timestamptz not null);
+create table if not exists okb_setup.firm (one_row boolean primary key default true check (one_row), name text not null);
 revoke all on all tables in schema okb_setup from public, anon, authenticated;
 delete from okb_setup.approved;
 insert into okb_setup.approved (sha256, name) values
  ${rows};
+delete from okb_setup.firm;
+insert into okb_setup.firm (name) values (${literal(name)});
 delete from okb_setup.owner_code;
 insert into okb_setup.owner_code (sha256, expires_at) values (${literal(sha256(code))}, now() + interval '1 day');
 select name from okb_setup.approved order by approved_at, name;`;
@@ -140,7 +149,7 @@ function options(argv) {
   for (let i = 0; i < argv.length; i++) {
     const word = argv[i];
     if (word === "--reset") out.reset = true;
-    else if (["--ref", "--folder", "--url", "--key"].includes(word)) {
+    else if (["--ref", "--folder", "--url", "--key", "--firm"].includes(word)) {
       if (argv[i + 1] === undefined) throw new Error(`${word} needs a value.`);
       out[word.slice(2)] = argv[++i];
     } else if (word.startsWith("--")) throw new Error(`${word} is not an option.`);
