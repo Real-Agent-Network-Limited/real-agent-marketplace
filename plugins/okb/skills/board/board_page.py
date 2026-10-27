@@ -6,7 +6,7 @@ The board is drawn from the plan model `plan_model.py` builds from the progress 
 model the graph is drawn from. The plan is the header, and each direct child of the plan is a row,
 in index order. A child plan's row holds a card for every activity under it, in index order, and
 the plan itself only as the row's heading; a child task's row holds its own card. Each card sits in
-the column for its state. With two or more rows, the page has a tab for each row and All, and
+the column for its state. With two or more rows, the page has a menu of the rows and All, and
 opens on the row `page_check.opening_row` names. Without --plan-id, the board draws the only plan
 with no parent. The page is drawn with board-shell.html, beside this script, and needs no network
 to open. Beside the page, `page_check.py` writes its outline, and its picture where a Chromium
