@@ -204,13 +204,13 @@ def opening_row(data):
     return None
 
 
-def tabs(data):
-    """The outline's line naming the board's tabs and the one it opens on; none for a plan with fewer than two parts."""
+def parts(data):
+    """The outline's line naming the parts in the board's menu and the one it opens on; none for a plan with fewer than two parts."""
     if len(data["rows"]) < 2:
         return []
     by_id = {a["id"]: a for a in data["activities"]}
     names = [named(by_id[row["activity"]]) for row in data["rows"]]
-    return [f"Tabs: {', '.join(names)}, All. Opens on {named(by_id[data['open_row']])}."]
+    return [f"Parts: {', '.join(names)}, All. Opens on {named(by_id[data['open_row']])}."]
 
 
 def check_board(page_path, data):
@@ -219,7 +219,7 @@ def check_board(page_path, data):
     plan = data["plan"]
     lines = [f"# Board: {named(plan)}", "",
              f"Read from OKB at {read_at(data['observed_at'])}, save number {data['cutoff']}.",
-             f"Purpose: {data.get('purpose', '')}", *owned(plan), *tabs(data), "",
+             f"Purpose: {data.get('purpose', '')}", *owned(plan), *parts(data), "",
              "Each row in order, then its cards in order. A card line is index and title, then its type, "
              "state, dates and badges. Under it are who it is assigned to, its deliverables and its blockers.", ""]
     for row in data["rows"]:

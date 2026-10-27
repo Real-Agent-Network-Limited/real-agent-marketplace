@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{TITLE}}</title>
 <style>
-/* The plan as the header, a timetable strip, then a row for each part of the plan across one column per state. A part that is a plan is only its row's heading; its cards are the activities under it. With two or more parts, a tab for each part and All pick the rows shown. */
+/* The plan as the header, a timetable strip, then a row for each part of the plan across one column per state. A part that is a plan is only its row's heading; its cards are the activities under it. With two or more parts, a menu on the filters' row picks a part, or All, for the rows shown. */
 :root {
   --text-primary: #1f1e1d; --text-secondary: #5f5e5a; --text-muted: #8f8d86;
   --surface-1: #f0eee6; --surface-2: #ffffff; --border: rgba(31,30,29,.12); --border-strong: rgba(31,30,29,.24);
@@ -61,15 +61,27 @@ h1 { margin: 2px 0 0; font-size: 22px; font-weight: 500; text-wrap: balance; }
 .tl-now { position: absolute; top: 0; bottom: 18px; width: 1px; background: var(--late); }
 .tl-now span { position: absolute; top: 0; left: 5px; font: 500 10.5px var(--mono); color: var(--late); white-space: nowrap; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+/* The filters are a group of their own; the part menu sits beside them in the same row. */
+.filters { display: contents; }
 .chip { font: 400 12px var(--mono); height: 30px; padding: 0 10px; border-radius: 8px; border: .5px solid var(--border-strong); background: var(--surface-2); color: var(--text-primary); cursor: pointer; }
 .chip[aria-pressed="true"] { background: var(--text-primary); border-color: var(--text-primary); color: var(--surface-2); }
 .chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
-.tab { font: 400 12px var(--mono); min-height: 30px; padding: 4px 12px; border-radius: 8px; border: .5px solid var(--border-strong); background: var(--surface-2); color: var(--text-primary); cursor: pointer; text-align: left; }
-.tab .ix { font-size: 12px; }
-.tab.cancelled { color: var(--text-muted); border-style: dashed; }
-.tab[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface-2); }
-.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* The part menu's button names the open part on one line, cut short with an ellipsis. Below 760 pixels it takes its own line. */
+.part-menu { display: inline-flex; align-items: center; gap: 8px; max-width: 420px; min-width: 0; }
+.part-menu[hidden] { display: none; }
+.part-menu .lbl, .part-menu .caret { flex: none; color: var(--text-muted); }
+.part-menu .val { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.part-menu .ix { font-size: 12px; }
+@media (max-width: 759px) { .part-menu { flex: 1 0 100%; max-width: none; } .part-menu .caret { margin-left: auto; } }
+/* The list of parts opens under the button. A browser without popovers shows it in place, always open. */
+#part-list:popover-open { position: fixed; margin: 0; inset: auto; display: grid; gap: 2px; padding: 4px; border: .5px solid var(--border-strong); border-radius: 8px;
+  background: var(--surface-2); color: var(--text-primary); box-shadow: 0 6px 24px rgba(0,0,0,.14); overflow-y: auto; }
+.option { font: 400 12px var(--mono); padding: 6px 10px; border-radius: 6px; border: .5px solid transparent; cursor: pointer; overflow-wrap: anywhere; }
+.option .ix { font-size: 12px; }
+.option:hover { background: var(--surface-1); }
+.option:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
+.option.cancelled { color: var(--text-muted); border: .5px dashed var(--border-strong); }
+.option[aria-selected="true"] { background: var(--accent); border-color: var(--accent); color: var(--surface-2); }
 .board-scroll { overflow: auto; max-height: calc(100vh - 24px); min-height: 320px; border-radius: 8px; background: var(--surface-1); }
 .lanes { display: grid; min-width: 1100px; background: var(--surface-1); border-radius: 8px; padding: 6px 10px 10px; }
 .lanes > * { min-width: 0; }
@@ -156,12 +168,15 @@ dd.record-id code { font: 12px var(--mono); overflow-wrap: anywhere; }
     <h2 id="tl-h">Timetable</h2>
     <div class="timeline-scroll"><div class="timeline" id="timeline"></div></div>
   </section>
-  <div class="toolbar" role="group" aria-label="Filter cards">
-    <button class="chip" id="f-all" aria-pressed="true" data-f="all">All</button>
-    <button class="chip" id="f-late" aria-pressed="false" data-f="late">Overdue or due to start</button>
-    <button class="chip" id="f-blocked" aria-pressed="false" data-f="blocked">Blocked</button>
+  <div class="toolbar">
+    <div class="filters" role="group" aria-label="Filter cards">
+      <button class="chip" id="f-all" aria-pressed="true" data-f="all">All</button>
+      <button class="chip" id="f-late" aria-pressed="false" data-f="late">Overdue or due to start</button>
+      <button class="chip" id="f-blocked" aria-pressed="false" data-f="blocked">Blocked</button>
+    </div>
+    <button class="chip part-menu" id="part-menu" popovertarget="part-list" aria-haspopup="listbox" aria-controls="part-list" aria-expanded="false" hidden></button>
   </div>
-  <div class="tabs" id="tabs" role="tablist" aria-label="Parts of the plan" hidden></div>
+  <div id="part-list" popover role="listbox" aria-label="Parts of the plan" hidden></div>
   <div class="board-scroll" id="board-panel"><div class="lanes" id="board"></div></div>
 </div>
 <aside class="drawer" id="drawer" hidden aria-label="Activity detail"></aside>
@@ -180,8 +195,8 @@ dd.record-id code { font: 12px var(--mono); overflow-wrap: anywhere; }
   var byId = {}; data.activities.forEach(function (a) { byId[a.id] = a; });
   var observed = new Date(data.observed_at);
   var filter = "all", selected = null, cancelledOpen = false;
-  // The open tab is a part's record id, or "all". board_page.py chooses the tab the page opens on.
-  var tabbed = data.rows.length >= 2, tab = tabbed ? data.open_row : "all";
+  // The open part is a part's record id, or "all". board_page.py chooses the part the page opens on.
+  var parted = data.rows.length >= 2, part = parted ? data.open_row : "all";
   // The heading column is named by what the rows are, and the state columns by what the cards are.
   function kinds(ids) { var k = {}; ids.forEach(function (id) { k[byId[id].kind] = true; }); return Object.keys(k); }
   var rk = kinds(data.rows.map(function (r) { return r.activity; }));
@@ -289,28 +304,49 @@ dd.record-id code { font: 12px var(--mono); overflow-wrap: anywhere; }
       '<span class="dates">' + esc(span(a)) + "</span>" + (badges(a) ? '<span class="badges">' + badges(a) + "</span>" : "") + "</button>";
   }
 
-  function renderTabs() {
-    var el = document.getElementById("tabs");
-    if (!tabbed) return;
-    el.hidden = false;
-    var panel = document.getElementById("board-panel");
-    panel.setAttribute("role", "tabpanel");
-    el.innerHTML = data.rows.map(function (r) { return byId[r.activity]; }).concat([null]).map(function (a, i) {
-      var id = a ? a.id : "all", on = tab === id;
-      // The board is labelled by the open tab.
-      if (on) panel.setAttribute("aria-labelledby", "tab-" + i);
-      return '<button class="tab' + (a && a.state === "cancelled" ? " cancelled" : "") + '" id="tab-' + i + '" role="tab" aria-controls="board-panel" aria-selected="' + on + '" tabindex="' + (on ? 0 : -1) + '" data-tab="' + esc(id) + '">' + (a ? named(a) : "All") + "</button>";
+  function renderPartMenu() {
+    if (!parted) return;
+    var button = document.getElementById("part-menu"), list = document.getElementById("part-list"), panel = document.getElementById("board-panel");
+    button.hidden = false; list.hidden = false;
+    // The board is labelled by the menu's button, which names the open part.
+    panel.setAttribute("role", "region");
+    panel.setAttribute("aria-labelledby", "part-menu");
+    var parts = data.rows.map(function (r) { return byId[r.activity]; });
+    var open = part === "all" ? null : byId[part];
+    button.innerHTML = '<span class="lbl">Part</span><span class="val">' + (open ? named(open) : "All") + '</span><span class="caret" aria-hidden="true">▾</span>';
+    button.title = open ? (open.index ? open.index + " " : "") + open.title : "All";
+    list.innerHTML = parts.concat([null]).map(function (a, i) {
+      var id = a ? a.id : "all";
+      return '<div class="option' + (a && a.state === "cancelled" ? " cancelled" : "") + '" id="part-' + i + '" role="option" tabindex="-1" aria-selected="' + (part === id) + '" data-part="' + esc(id) + '">' + (a ? named(a) : "All") + "</div>";
     }).join("");
   }
-  function openTab(id, focus) {
-    tab = id; renderTabs(); renderBoard(); fitBoard();
-    if (focus) document.querySelector('.tab[aria-selected="true"]').focus();
+  // A part opens at the top of the board, whatever the last part was scrolled to.
+  function openPart(id) { part = id; renderPartMenu(); renderBoard(); fitBoard(); document.querySelector(".board-scroll").scrollTop = 0; }
+  // The list opens under the button, inside the window. With less than 160 pixels under the button, and more room over it, it opens over the button. It scrolls where it is taller than its room.
+  function placeList() {
+    var list = document.getElementById("part-list"), b = document.getElementById("part-menu").getBoundingClientRect();
+    var w = Math.min(Math.max(b.width, 280), window.innerWidth - 32);
+    var below = window.innerHeight - b.bottom - 12, above = b.top - 12;
+    list.style.width = w + "px";
+    list.style.left = Math.max(16, Math.min(b.left, window.innerWidth - 16 - w)) + "px";
+    if (below >= 160 || below >= above) { list.style.top = b.bottom + 4 + "px"; list.style.bottom = "auto"; list.style.maxHeight = below + "px"; }
+    else { list.style.top = "auto"; list.style.bottom = window.innerHeight - b.top + 4 + "px"; list.style.maxHeight = above + "px"; }
   }
+  function openList() {
+    var list = document.getElementById("part-list");
+    // A browser without popovers shows the list in place, always open.
+    if (!list.showPopover) return;
+    if (!listOpen()) list.showPopover();
+    list.querySelector('[aria-selected="true"]').focus();
+  }
+  function listOpen() { try { return document.getElementById("part-list").matches(":popover-open"); } catch (err) { return false; } }
+  function closeList() { var list = document.getElementById("part-list"); if (listOpen()) list.hidePopover(); document.getElementById("part-menu").focus(); }
+  function pickPart(id) { closeList(); openPart(id); }
 
   function renderBoard() {
     var cols = STATES.filter(function (s) { return s.key !== "cancelled" || cancelledOpen; });
-    var shown = data.rows.filter(function (r) { return tab === "all" || r.activity === tab; });
-    // Each state column counts the cards of the rows the open tab shows.
+    var shown = data.rows.filter(function (r) { return part === "all" || r.activity === part; });
+    // Each state column counts the cards of the rows the open part shows.
     var cardCounts = {}; shown.forEach(function (r) { r.cards.forEach(function (id) { var s = byId[id].state; cardCounts[s] = (cardCounts[s] || 0) + 1; }); });
     var rows = shown.filter(function (r) { return matches(byId[r.activity]) || r.cards.some(function (id) { return matches(byId[id]); }); });
     var el = document.getElementById("board");
@@ -379,11 +415,11 @@ dd.record-id code { font: 12px var(--mono); overflow-wrap: anywhere; }
   }
 
   document.addEventListener("click", function (e) {
-    var t = e.target.closest("[data-id], [data-tab], #close, #open-cancelled, [data-copy], .chip");
+    var t = e.target.closest("[data-id], [data-part], #close, #open-cancelled, [data-copy], [data-f]");
     if (!t) return;
-    if (t.dataset.tab) return openTab(t.dataset.tab);
-    // A part's bar in the timetable opens its tab, then its panel.
-    if (t.classList.contains("tl-bar") && tabbed) openTab(t.dataset.id);
+    if (t.dataset.part) return pickPart(t.dataset.part);
+    // A part's bar in the timetable opens that part, then its panel.
+    if (t.classList.contains("tl-bar") && parted) openPart(t.dataset.id);
     if (t.id === "close") return closeDrawer();
     if (t.id === "open-cancelled") { cancelledOpen = true; return renderBoard(); }
     if (t.dataset.copy) {
@@ -396,27 +432,48 @@ dd.record-id code { font: 12px var(--mono); overflow-wrap: anywhere; }
       try { navigator.clipboard.writeText(code.textContent).then(function () { t.textContent = "Copied"; }, function () {}); } catch (err) {}
       return;
     }
-    if (t.classList.contains("chip")) {
+    if (t.dataset.f) {
       filter = t.dataset.f;
-      document.querySelectorAll(".chip").forEach(function (c) { c.setAttribute("aria-pressed", String(c === t)); });
+      document.querySelectorAll(".chip[data-f]").forEach(function (c) { c.setAttribute("aria-pressed", String(c === t)); });
       return renderBoard();
     }
     openDrawer(t.dataset.id);
   });
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && selected) closeDrawer();
+    // Escape with the part list open closes the list only.
+    if (e.key === "Escape" && selected && !listOpen()) closeDrawer();
     if ((e.key === "Enter" || e.key === " ") && e.target.classList && (e.target.classList.contains("tl-bar") || e.target.classList.contains("lane-head"))) {
       e.preventDefault();
-      if (e.target.classList.contains("tl-bar") && tabbed) openTab(e.target.dataset.id);
+      if (e.target.classList.contains("tl-bar") && parted) openPart(e.target.dataset.id);
       openDrawer(e.target.dataset.id);
     }
-    // The arrow keys, Home and End move between the tabs, and open the tab they move to.
-    if (e.target.classList && e.target.classList.contains("tab")) {
-      var ids = [].map.call(document.querySelectorAll(".tab"), function (b) { return b.dataset.tab; }), i = ids.indexOf(e.target.dataset.tab);
-      var to = { ArrowRight: i + 1, ArrowDown: i + 1, ArrowLeft: i - 1, ArrowUp: i - 1, Home: 0, End: ids.length - 1 }[e.key];
-      if (to !== undefined) { e.preventDefault(); openTab(ids[(to + ids.length) % ids.length], true); }
+    // Enter, Space or the down arrow opens the list and focuses the open part at once, so a key pressed straight after it lands in the list.
+    if (e.target.id === "part-menu" && (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      openList();
     }
   });
+  // In the list, the arrow keys, Home and End move, and Enter or Space picks. Escape closes it with no change, and focus goes back to the button.
+  // Tab closes it from the button, so focus moves on to the next thing, or back with Shift+Tab.
+  document.getElementById("part-list").addEventListener("keydown", function (e) {
+    var opts = [].slice.call(this.querySelectorAll(".option")), i = opts.indexOf(document.activeElement);
+    var to = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: opts.length - 1 }[e.key];
+    if (to !== undefined) { e.preventDefault(); opts[Math.max(0, Math.min(opts.length - 1, to))].focus(); }
+    else if ((e.key === "Enter" || e.key === " ") && i >= 0) { e.preventDefault(); pickPart(opts[i].dataset.part); }
+    else if (e.key === "Escape") { e.preventDefault(); closeList(); }
+    else if (e.key === "Tab") closeList();
+    e.stopPropagation();
+  });
+  // The list is placed before it shows, and the open part is focused once it has.
+  document.getElementById("part-list").addEventListener("beforetoggle", function (e) {
+    document.getElementById("part-menu").setAttribute("aria-expanded", String(e.newState === "open"));
+    if (e.newState === "open") placeList();
+  });
+  document.getElementById("part-list").addEventListener("toggle", function (e) {
+    if (e.newState === "open" && !this.contains(document.activeElement)) { var on = this.querySelector('[aria-selected="true"]'); if (on) on.focus(); }
+  });
+  window.addEventListener("resize", function () { if (listOpen()) placeList(); });
+  window.addEventListener("scroll", function () { if (listOpen()) placeList(); }, { passive: true });
   // The board fills the window below its top edge, so its scrollbars are on screen with the page at the top.
   function fitBoard() {
     var sc = document.querySelector(".board-scroll");
@@ -424,7 +481,7 @@ dd.record-id code { font: 12px var(--mono); overflow-wrap: anywhere; }
   }
   window.addEventListener("resize", fitBoard);
   document.getElementById("purpose").addEventListener("toggle", fitBoard);
-  renderHeader(); renderTimeline(); renderTabs(); renderBoard(); fitBoard();
+  renderHeader(); renderTimeline(); renderPartMenu(); renderBoard(); fitBoard();
 })();
 </script>
 </body>

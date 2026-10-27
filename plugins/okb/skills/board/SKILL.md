@@ -12,12 +12,13 @@ A **progress board** draws one plan in OKB as a single HTML page, which opens in
 - A timetable strip shows each part of the plan against the plan's dates, with a line at the time OKB was read.
 - The board has a column for each state: Pending, In progress, Paused, Completed and Cancelled. Cancelled is folded until clicked.
 - Each part of the plan directly under it is a row, in index order. The first column names the part by its index and title, with its dates, its state and its badges. It is headed Plan, Task, or Plan or task. A part that is itself a plan holds a card for every activity under it, in index order. A task holds its own card. An activity with no index comes after every indexed one beside it, by start date then title.
-- A plan with two or more parts has a row of tabs between the filters and the board. Each part has a tab, in index order, named by its index and title, and a last tab, All, shows every row. A cancelled part's tab is muted.
-- A part's tab shows that part's row only. The arrow keys move between the tabs. A filter applies within the open tab.
+- A plan with two or more parts has a menu of its parts at the end of the filters' row. It comes after All, Overdue or due to start, and Blocked. Its button is labelled Part, then the open part's index and title, on one line, cut short where it is too long. Below 760 pixels wide, the button takes its own line under the filters.
+- Clicking the button opens a list of the parts under it, each named by its index and title, in index order, then All. The open part is marked, and a cancelled part is muted. Picking a part shows that part's row only, and All shows every row. Escape, or a click outside the list, closes it with no change. In a short window, the list opens over the button. A filter applies within the open part.
+- From the keyboard, Enter, Space or the down arrow opens the list. The arrow keys, Home and End move in it, and Enter picks. Escape closes it, and focus goes back to the button. Tab closes it and moves on from the button.
 - The board opens on the first part in progress. With none, it opens on the first part not completed or cancelled, and with none of those, on the first part.
-- Clicking a part's bar in the timetable strip opens its tab and its panel.
-- For a plan with two or more parts, the page's outline has a Tabs line after its header. It names each tab and the tab the board opens on. The outline lists every row.
-- Each state column shows how many cards the open tab holds.
+- Clicking a part's bar in the timetable strip opens that part and its panel.
+- For a plan with two or more parts, the page's outline has a Parts line after its header. It names each part in the menu and the part the board opens on. The outline lists every row.
+- Each state column shows how many cards the open part holds.
 - The board scrolls within the window, and its headings stay at the top.
 - A plan's board and its graph come from one plan model. Both are built from the same progress files, as the `okb:graph` skill's "Draw a plan" says.
 - A card shows the activity's kind, its index and title, its dates and its badges. A task's kind is its task type: Task, Deliverable or Blocker. The badges are Overdue with its hours, Due to start, and Blocked with the count. Deliverables gives how many of its deliverable records are completed, out of those pending, in progress, paused or completed. After names each other unfinished activity it waits on. No deliverables marks an activity in progress or paused with no deliverables written and no deliverable record in those four states. An activity waits on an unfinished one while it is in progress, paused or due to start. Each badge is one line, and a long title is cut short.
