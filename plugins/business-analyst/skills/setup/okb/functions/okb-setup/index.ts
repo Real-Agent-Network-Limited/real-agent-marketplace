@@ -16,9 +16,12 @@
 // Agent's staff real-agent.ts lists, it reuses the Auth user Auth holds for the email, or else makes a one-time
 // invitation code, as okb-invite makes one: three groups of four from an alphabet with no look-alike letters or digits,
 // valid for 7 days. It sends no email. It sends each code to Real Agent's website, ACCESS_URL, as JSON { project_url,
-// email, code, expires, firm, owner_name, owner_email }, with a 5-second limit: the owner's agreement to setup covers
-// this. firm is the firm's name, from okb_setup.firm, which build.mjs approve keeps, and the owner's name and email
-// are theirs from this sign-in, so Real Agent knows whose project the code opens. It records each person with
+// email, code, expires, firm, owner_name, owner_email, publishable_key }, with a 5-second limit: the owner's agreement
+// to setup covers this. firm is the firm's name, from okb_setup.firm, which build.mjs approve keeps, and the owner's
+// name and email are theirs from this sign-in, so Real Agent knows whose project the code opens. publishable_key is the
+// project's publishable key, which the sign-in sends as its apikey header, so Real Agent can redeem the code. It goes
+// only when it is a publishable key, sb_publishable_..., or a legacy key whose role is anon, and is left out otherwise,
+// so a secret key never leaves the project. It records each person with
 // an Auth user in okb_setup.person, and each code's SHA-256 alone in okb_setup.staff_code, for first-administrator.sql,
 // which makes the actors and the invitations okb-join spends. It records each loose end in okb_setup.open_task, which
 // first-administrator.sql saves as an open task for the owner: "Send Real Agent its invitation code" for each code the
@@ -39,6 +42,20 @@ const message = (err: unknown) => (err instanceof Error ? err.message : String(e
 const sha256 = async (bytes: Uint8Array) =>
   Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)), b => b.toString(16).padStart(2, "0")).join("");
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** The key when it is a publishable key, which is public: sb_publishable_..., or a legacy JWT whose role is anon. Else null. */
+export function publishableKey(key: string | null): string | null {
+  if (!key || key.length > 512) return null;
+  if (/^sb_publishable_[A-Za-z0-9_-]{8,}$/.test(key)) return key;
+  const parts = key.split(".");
+  if (parts.length !== 3 || !parts.every(p => /^[A-Za-z0-9_-]+$/.test(p))) return null;
+  try {
+    const payload = JSON.parse(atob(parts[1].replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(parts[1].length / 4) * 4, "=")));
+    return payload?.role === "anon" ? key : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Supabase Auth's admin API, with the project's own service key, which only this function's environment holds. */
 async function auth(method: string, path: string, body?: unknown): Promise<{ ok: boolean; body: Record<string, unknown> }> {
@@ -80,7 +97,7 @@ export function openTasks(staff: { name: string; email: string }[], coded: { nam
 }
 
 /** Sends one code to Real Agent's website. True only when it answers 2xx within 5 seconds. */
-async function deliver(c: { email: string; code: string; expires_at: string }, who: { firm: string; owner_name: string; owner_email: string }): Promise<boolean> {
+async function deliver(c: { email: string; code: string; expires_at: string }, who: { firm: string; owner_name: string; owner_email: string; publishable_key?: string }): Promise<boolean> {
   if (!ACCESS_URL) return false;
   try {
     const res = await fetch(ACCESS_URL, {
@@ -121,7 +138,7 @@ async function runFile(db: any, text: string): Promise<Response> {
 }
 
 // deno-lint-ignore no-explicit-any
-async function owner(db: any, body: Record<string, unknown>): Promise<Response> {
+async function owner(db: any, body: Record<string, unknown>, apikey: string | null = null): Promise<Response> {
   const code = typeof body.code === "string" ? body.code : "";
   const name = typeof body.name === "string" ? body.name.trim() : "";
   const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
@@ -149,7 +166,8 @@ async function owner(db: any, body: Record<string, unknown>): Promise<Response> 
   }
   // Each code Real Agent's website takes needs nothing from the owner. Any other goes in the summary and an open task.
   const [firm] = coded.length ? await db`select name from okb_setup.firm` : [];
-  const who = { firm: firm?.name ?? "", owner_name: name, owner_email: email };
+  const key = publishableKey(apikey);
+  const who = { firm: firm?.name ?? "", owner_name: name, owner_email: email, ...(key ? { publishable_key: key } : {}) };
   const unsent: typeof coded = [];
   for (const c of coded) if (!firm || !await deliver(c, who)) unsent.push(c);
   const tasks = openTasks(STAFF, unsent);
@@ -177,7 +195,7 @@ Deno.serve(async (req) => {
     if (route === "sql") return await runFile(db, await req.text());
     let body: Record<string, unknown>;
     try { body = await req.json(); } catch { return json(400, { ok: false, problem: "The request must be JSON." }); }
-    return await owner(db, body ?? {});
+    return await owner(db, body ?? {}, req.headers.get("apikey"));
   } catch (err) {
     return json(500, { ok: false, problem: message(err) });
   } finally {
