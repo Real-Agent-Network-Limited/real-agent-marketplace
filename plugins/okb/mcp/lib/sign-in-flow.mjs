@@ -172,6 +172,8 @@ export async function joinSignIn({ url: knownUrl, key, email: given, folder }, a
       method: "POST", headers: { apikey: key, "Content-Type": "application/json" }, body: JSON.stringify({ email, code, password }),
     });
     made = await response.json().catch(() => ({ ok: false, problem: `the project answered HTTP ${response.status}` }));
+    // Supabase's gateway, not okb-join, answers a wrong key or a missing function, with its own message and no problem.
+    if (!made?.ok && !made?.problem && made?.message) made.problem = `the project answered HTTP ${response.status}: ${String(made.message).replace(/([^.])$/, "$1.")}${response.status === 401 ? ` Check that ${key} is this project's publishable key.` : ""} Your code was not used.`;
   } catch (err) {
     throw new Error(`the project could not be reached: ${err?.cause?.code ?? err?.message ?? err}`);
   }
