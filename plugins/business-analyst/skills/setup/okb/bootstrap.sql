@@ -164,7 +164,7 @@ select actor_id, field, old_value, new_value, changed_at, changed_by_actor_id fr
 -- Generate a long password in the password manager, and put it and the person's email address in
 -- place. It sets the password and ends the person's saved sign-ins, so each of their folders signs
 -- in again. Check it shows users_reset 1. Pass the password on through the password manager's
--- secure share, or face to face. The person signs in again with okb setup and --new-password, and
+-- secure share, or face to face. The person runs okb sign-in --new-password in their folder, and
 -- chooses a new one. Leave the dashboard's Send password recovery and Send magic link unused.
 -- -------------------------------------------------------------------
 with u as (

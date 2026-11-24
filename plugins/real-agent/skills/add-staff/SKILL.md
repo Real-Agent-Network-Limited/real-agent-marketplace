@@ -5,11 +5,11 @@ description: Use when a firm's administrator adds a member of staff to a workflo
 
 # Add staff
 
-Each member of staff works in the firm's organisational knowledge base (OKB) as their own actor, with their own sign-in. OKB is the firm's own Supabase project. In each workflow a person holds one role, such as negotiator or manager. The role sets what they may read and change there. So the audit log names who did what, and each person sees only what their role allows.
+Each member of staff works in the firm's organisational knowledge base (OKB) as their own actor, with their own sign-in. OKB is the firm's own Supabase project. In each workflow a person holds one role, such as adviser or manager. The role sets what they may read and change there. So the audit log names who did what, and each person sees only what their role allows.
 
-This skill adds one person to one workflow. A workflow is one plugin, such as `appraisal`, delivered by Real Agent. Each workflow plugin holds an `access.json` file. It names the workflow's own scope and each role in it, with the role's grants. It also names the roles whose people install the plugin. Section 1 sets out the file.
+This skill adds one person to one workflow. A workflow is one plugin, such as `orders`, delivered by Real Agent. Each workflow plugin holds an `access.json` file. It names the workflow's own scope and each role in it, with the role's grants. It also names the roles whose people install the plugin. Section 1 sets out the file.
 
-Each workflow plugin's releases are kept in a scope of their own, `plugins_<workflow>`: the plugin's name, each hyphen an underscore, such as `plugins_appraisal`. Only a person whose grants reach that scope gets the plugin from `okb sync`. Section 2 makes the scope before Real Agent first publishes the workflow.
+Each workflow plugin's releases are kept in a scope of their own, `plugins_<workflow>`: the plugin's name, each hyphen an underscore, such as `plugins_orders`. Only a person whose grants reach that scope gets the plugin from `okb sync`. Section 2 makes the scope before Real Agent first publishes the workflow.
 
 Each person's access is written down in the **Administration** scope, which only the firm's administrators and Real Agent's staff read. Section 7 saves that access record.
 
@@ -33,23 +33,23 @@ With the agent, the person's own instruction replaces a rule of this skill, such
 
 ## 1. The workflow's roles
 
-The workflow's `access.json` is in its plugin, at the plugin's top folder. Each release in the workflow's plugin scope holds it at `<release>/plugins/<workflow>/access.json`. This example has two roles, and both install the plugin. A negotiator works only on the appraisals they started. A manager sees and decides on every appraisal.
+The workflow's `access.json` is in its plugin, at the plugin's top folder. Each release in the workflow's plugin scope holds it at `<release>/plugins/<workflow>/access.json`. This example has two roles, and both install the plugin. A adviser works only on the orders they started. A manager sees and decides on every orders.
 
 ```json
 {
-  "workflow": "appraisal",
-  "scope": { "code": "appraisal", "display_name": "Appraisal", "description": "Each market appraisal, from the vendor's first call to the instruction." },
+  "workflow": "orders",
+  "scope": { "code": "orders", "display_name": "Orders", "description": "Each customer order, from the first enquiry to delivery." },
   "roles": {
-    "negotiator": {
-      "description": "A negotiator books and carries out appraisals, and sees only the appraisals they started.",
-      "grants": [{ "scope": "appraisal", "record_kinds": ["activity", "decision", "model", "evidence"], "actions": ["read", "create", "edit", "start", "complete", "cancel"], "own_records": true }]
+    "adviser": {
+      "description": "An adviser takes and follows up orders, and sees only the orders they started.",
+      "grants": [{ "scope": "orders", "record_kinds": ["activity", "decision", "model", "evidence"], "actions": ["read", "create", "edit", "start", "complete", "cancel"], "own_records": true }]
     },
     "manager": {
-      "description": "The branch manager sees every appraisal, takes one over, and decides on the price advice.",
-      "grants": [{ "scope": "appraisal", "record_kinds": ["activity", "decision", "model", "evidence"], "actions": ["read", "create", "edit", "start", "hold", "complete", "reopen", "cancel", "decide"], "own_records": false }]
+      "description": "The manager sees every order, takes one over, and decides on discounts.",
+      "grants": [{ "scope": "orders", "record_kinds": ["activity", "decision", "model", "evidence"], "actions": ["read", "create", "edit", "start", "hold", "complete", "reopen", "cancel", "decide"], "own_records": false }]
     }
   },
-  "plugin_readers": ["negotiator", "manager"]
+  "plugin_readers": ["adviser", "manager"]
 }
 ```
 
@@ -66,7 +66,7 @@ The rules for the file:
 
 1. **Find the newest release.**
    - **Person:** in their folder, runs `okb list_files bucket=plugins_<workflow>`. The newest release is the folder with the latest name, such as `20261015-120000-1a2b3c4`, whose own list holds `MANIFEST`. `okb list_files bucket=plugins_<workflow> prefix=<release>` shows it.
-   - **Business analyst agent:** calls `list_files` with the workflow's plugin scope, `plugins_<workflow>`, as the bucket. It takes the folder with the latest name, and calls `list_files` with that folder as `prefix`. A folder without `MANIFEST` is a release still being published, so it takes the next older one. When the scope is missing or holds no release, it runs section 2 first, and asks Real Agent to publish.
+   - **Business analyst agent:** calls `list_files` with the workflow's plugin scope, `plugins_<workflow>`, as the bucket. It takes the folder with the latest name, and calls `list_files` with that folder as `prefix`. A folder without `MANIFEST` or `MANIFEST.sig` is a release still being published, so it takes the next older one. When the scope is missing or holds no release, it runs section 2 first, and asks Real Agent to publish.
 2. **Read the workflow's access.json.**
    - **Person:** runs `okb download_file bucket=plugins_<workflow> path=<release>/plugins/<workflow>/access.json file=access-<workflow>.json`, and opens the file.
    - **Business analyst agent:** calls `download_file` with that path, into a new file in the agent folder, and reads it with `read_file`. When the release has no such file, it says the workflow is not in the firm's plugins yet, and stops.
@@ -114,7 +114,7 @@ A workflow role gives the `basic` template's grants and the role's grants from t
      - With `sign_in` "code": "I've added <name> as <role>. Their one-time invitation code is <code>, and it works until <day>. Please give <first name> the code yourself, in person or by phone. If Real Agent is already on their computer, they run this line in the Terminal:" Then `command`. Then "If not, they run this line instead, which installs Real Agent first:" Then `install_command`. When the administrator says the person uses Windows, the second line is `install_command_windows`, in a block tagged `powershell`.
      - With `sign_in` "existing": "<name> already had a sign-in, so there is no code. Their role is ready. They run this line in the Terminal:" Then `command`.
      - For Real Agent: "I've added Real Agent as <name>. Please email its one-time code to <email>: <code>. It works once, until <day>." With no command: Real Agent's staff know it.
-     - `<role>` is the template or role in plain words, such as "basic staff" or "a negotiator in appraisal". `<day>` is `code_expires_at` as a day, such as 1 November 2026.
+     - `<role>` is the template or role in plain words, such as "basic staff" or "a adviser in orders". `<day>` is `code_expires_at` as a day, such as 1 November 2026.
 3. **When it is refused.**
    - **Person:** reads the problem the command prints.
    - **Business analyst agent:** gives the problem in one plain sentence, and what the administrator can do. OKB has kept nothing. It never offers the dashboard steps of section 4 instead.

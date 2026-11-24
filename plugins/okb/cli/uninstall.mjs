@@ -79,11 +79,15 @@ async function signOut(file) {
   const saved = readJson(file);
   if (!saved?.url || !saved?.publishableKey || !saved?.refreshToken) return "the file holds no sign-in";
   try {
-    const renewed = await refreshSession(saved.url, saved.publishableKey, saved.refreshToken);
-    if (!renewed.ok) return `the project refused the sign-in: ${renewed.problem}`;
+    let token = typeof saved.accessToken === "string" && Number(saved.expiresAt) - 60_000 > Date.now() ? saved.accessToken : null;
+    if (!token) {
+      const renewed = await refreshSession(saved.url, saved.publishableKey, saved.refreshToken);
+      if (!renewed.ok) return `the project refused the sign-in: ${renewed.problem}`;
+      token = renewed.body.access_token;
+    }
     const response = await fetch(`${saved.url}/auth/v1/logout?scope=local`, {
       method: "POST",
-      headers: { apikey: saved.publishableKey, Authorization: `Bearer ${renewed.body.access_token}` },
+      headers: { apikey: saved.publishableKey, Authorization: `Bearer ${token}` },
     });
     return response.ok ? null : `the project answered HTTP ${response.status}`;
   } catch (err) {
@@ -95,7 +99,7 @@ async function signOut(file) {
 
 /** Real Agent's own plugins, whose agents a folder okb setup made names. A firm's workflow plugins are the others
  * installed from the real-agent marketplace. */
-export const REAL_AGENT_PLUGINS = ["business-analyst", "real-agent", "real-agent-internal", "okb"];
+export const REAL_AGENT_PLUGINS = ["business-analyst", "real-agent", "okb"];
 
 /** The local folder a file:// git source names, or null. */
 function sourceFolder(url) {
@@ -155,13 +159,13 @@ export function survey({ home, configDir, temp, platform, claude, localAppData =
   // Claude Code's settings name as the real-agent marketplace's source, with the files okb sync keeps beside it.
   const copies = join(home, "okb-marketplace");
   for (const ref of (() => { try { return readdirSync(copies); } catch { return []; } })()) {
-    const ref0 = ref.replace(/\.(incoming|old|lock|workflows)$/, "");
+    const ref0 = ref.replace(/\.(incoming|old|lock|workflows|sync\.json|sync\.log|sync-check\.json)$/, "");
     if (PROJECT_REF.test(ref0)) refs.add(ref0);
   }
   const known = readJson(join(configDir, "plugins", "known_marketplaces.json"))?.[MARKETPLACE_NAME];
   const registered = sourceFolder(known?.source?.url) ?? sourceFolder(settings.extraKnownMarketplaces?.[MARKETPLACE_NAME]?.source?.url);
   const outside = registered && !resolve(registered).startsWith(`${resolve(copies)}${process.platform === "win32" ? "\\" : "/"}`) && resolve(registered) !== resolve(home)
-    ? ["", ".incoming", ".old", ".lock", ".workflows"].map(end => `${resolve(registered)}${end}`) : [];
+    ? ["", ".incoming", ".old", ".lock", ".workflows", ".sync.json", ".sync.log", ".sync-check.json"].map(end => `${resolve(registered)}${end}`) : [];
 
   const signIns = [];
   for (const ref of [...refs].sort()) {

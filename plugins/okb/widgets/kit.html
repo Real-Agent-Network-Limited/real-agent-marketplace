@@ -1,0 +1,54 @@
+<style>
+.wk { display: grid; gap: 1rem; padding: 0.5rem 0; font-size: 14px; }
+.wk-head { background: var(--surface-1); color: inherit; border-radius: 12px; padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.wk-head .wk-meta { flex: 1 1 200px; font-size: 13px; }
+.wk h2 { font-size: 16px; margin: 0 0 4px; overflow-wrap: anywhere; }
+.wk h3 { font-size: 13px; font-weight: 500; margin: 12px 0 6px; color: var(--text-secondary); }
+.wk .wk-lead { margin: 0 0 8px; font-size: 13px; color: var(--text-secondary); }
+.wk-row { border: 0.5px solid var(--border); border-radius: var(--radius); padding: 10px 12px; display: grid; gap: 6px; margin-bottom: 8px; min-width: 0; }
+.wk-row p { margin: 0; overflow-wrap: anywhere; }
+.wk-name { display: flex; gap: 10px; align-items: center; min-width: 0; }
+.wk-thumb { width: 48px; height: 48px; flex: none; object-fit: contain; border-radius: var(--radius); background: #ffffff; border: 0.5px solid var(--border); }
+.wk-sub { font-size: 13px; color: var(--text-secondary); }
+.wk-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+.wk-table th, .wk-table td { text-align: left; vertical-align: top; padding: 4px 6px; border-top: 0.5px solid var(--border); overflow-wrap: anywhere; }
+.wk-table th { font-weight: 500; color: var(--text-secondary); }
+.wk-value { white-space: pre-wrap; }
+.wk-old { color: var(--text-secondary); }
+.wk details summary { cursor: pointer; }
+.wk details .wk-value { margin-top: 4px; padding: 6px 8px; border-radius: var(--radius); background: var(--surface-1); }
+</style>
+<div class="wk">
+  <h2 class="sr-only">From the firm's knowledge base.</h2>
+  <div class="wk-head" data-brand-logo>
+    <span class="wk-meta" id="wk-meta"></span>
+  </div>
+  <div id="wk-body"></div>
+</div>
+<script>
+// The widget kit's shared code. The card's maker puts the kind's code after it, in this one script: the kind gives
+// draw(data) alone. The kit has no button, writes nothing into the person's message box, and makes no call of its own.
+
+/** A value as text that can be shown in HTML. */
+function esc(v) {
+  return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
+}
+
+/** A row's name beside its SKU's thumbnail: the picture draw_widget put inside the data, or the name alone. */
+function named(image, html) {
+  var ok = typeof image === "string" && /^data:image\/(png|jpeg);base64,[A-Za-z0-9+\/=]+$/.test(image);
+  return '<div class="wk-name">' + (ok ? '<img class="wk-thumb" alt="" src="' + image + '">' : "") + "<p>" + html + "</p></div>";
+}
+
+/** The header's line: the firm, the person and the time of the read. */
+function meta(data) {
+  return (data.business || "") + " · " + (data.person || "") + " · read " + (data.drawn_at || "");
+}
+
+function start() {
+  var data = JSON.parse(document.getElementById("widget-data").textContent);
+  document.getElementById("wk-meta").textContent = meta(data);
+  var body = document.getElementById("wk-body");
+  body.innerHTML = draw(data);
+}
+</script>

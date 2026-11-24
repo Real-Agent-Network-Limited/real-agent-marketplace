@@ -1,6 +1,6 @@
-// okb-join: a person invited with okb-invite spends their one-time invitation code and chooses their own password. Deploy
-// it with verify_jwt off, through the Supabase connector's deploy_edge_function: the person has no sign-in yet, so it
-// checks each call itself. It is a function of its own, not a mode of okb-invite, because Supabase sets verify_jwt for a
+// okb-join: a person invited with okb-invite spends their one-time invitation code and chooses their own password. The
+// setup command deploys it through the Management API with verify_jwt off. The person has no sign-in yet, so it checks
+// each call itself. It is a function of its own, not a mode of okb-invite, because Supabase sets verify_jwt for a
 // whole function, and okb-invite must keep it on; and not a mode of okb-setup, which runs approved setup files as
 // postgres and has no business being called by every new member of staff. So the public surface is this one path.
 //

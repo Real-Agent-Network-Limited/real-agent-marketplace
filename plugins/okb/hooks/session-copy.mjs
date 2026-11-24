@@ -1,7 +1,7 @@
 // Turns one Claude Code session, a JSONL file under ~/.claude/projects, into Markdown that holds what
 // the person and the agent wrote. Tool calls, tool results, thinking, attachments, subagent turns,
 // shell commands and their output are left out. A turn's text loses its <system-reminder> blocks.
-import { readFileSync } from "node:fs";
+import { closeSync, openSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 // A person's line that is a shell command, its output, or a slash command, rather than what they wrote.
@@ -14,6 +14,49 @@ export const UPLOADED = ".uploaded.json";
 /** The copies uploaded, each name with the time its file had when it went up. */
 export function uploaded(sessionsFolder) {
   try { return JSON.parse(readFileSync(join(sessionsFolder, UPLOADED), "utf-8")) ?? {}; } catch { return {}; }
+}
+
+const LOCK_WAIT = 5000, LOCK_STALE = 30000;
+const pause = ms => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+/** Changes .uploaded.json under a lock file, reading it afresh and replacing it whole, so two uploads that overlap each
+ * keep their change. A lock older than 30 seconds is taken over. It waits up to 5 seconds for the lock, then goes on
+ * without it. Returns the list written. */
+export function changeUploaded(sessionsFolder, change) {
+  const lock = join(sessionsFolder, `${UPLOADED}.lock`);
+  let fd;
+  for (const end = Date.now() + LOCK_WAIT; fd === undefined;) {
+    try { fd = openSync(lock, "wx"); }
+    catch (err) {
+      if (err?.code !== "EEXIST") break;
+      let stale = false;
+      try { stale = Date.now() - statSync(lock).mtimeMs > LOCK_STALE; } catch { continue; }
+      if (stale) { rmSync(lock, { force: true }); continue; }
+      if (Date.now() >= end) break;
+      pause(20);
+    }
+  }
+  const next = join(sessionsFolder, `${UPLOADED}.${process.pid}`), file = join(sessionsFolder, UPLOADED);
+  try {
+    const list = uploaded(sessionsFolder);
+    change(list);
+    const text = JSON.stringify(list, null, 1) + "\n";
+    writeFileSync(next, text);
+    // On Windows a rename over a file another process is reading can fail with EPERM: it is tried again, then the file is
+    // written in place.
+    for (let tries = 0; ; tries++) {
+      try { renameSync(next, file); break; }
+      catch (err) {
+        if (tries < 5 && (err?.code === "EPERM" || err?.code === "EACCES" || err?.code === "EBUSY")) { pause(20); continue; }
+        writeFileSync(file, text);
+        break;
+      }
+    }
+    return list;
+  } finally {
+    rmSync(next, { force: true });
+    if (fd !== undefined) { closeSync(fd); rmSync(lock, { force: true }); }
+  }
 }
 
 const pad = n => String(n).padStart(2, "0");

@@ -1,5 +1,5 @@
-// okb-invite: adds one person to the firm's OKB in one call, for a signed-in administrator. Deploy it with
-// verify_jwt on, through the Supabase connector's deploy_edge_function. It stays deployed: setup deploys it with the others.
+// okb-invite: adds one person to the firm's OKB in one call, for a signed-in administrator. The setup
+// command deploys it through the Management API with verify_jwt on, with the others, and it stays deployed.
 //
 // POST .../okb-invite, with the caller's own sign-in, JSON { name, email, template } or { name, email, workflow, role }.
 // It confirms who the caller is with Supabase Auth, then asks OKB, as the caller, with okb_get_actor: only a person
@@ -11,11 +11,11 @@
 // code for the email, kept in okb_private.invitation as its SHA-256 alone. The code is three groups of four from an
 // alphabet with no look-alike letters or digits, about 59 bits, valid for 7 days, spent once, and locked after 5 wrong
 // tries. Inviting the email again replaces an unused code. The person spends it with okb-join, which makes their Auth
-// user with the password they choose and their sessions scope. The actor is "<name> (Real Agent)" for the real_agent
+// user with the password they choose and their sessions scope. The actor is "<name> (Real Agent)" for the realAgent
 // template. It gives the template's grants, or for a workflow role the basic template's, the role's grants from the
 // newest release of the workflow's access.json in its plugins_<workflow> scope, and read of that scope for a role
 // plugin_readers names, each approved by the caller. A person already in OKB keeps their actor and gets only the grants
-// they lack. It saves the access record in the Administration scope as the caller. With the real_agent template, it
+// they lack. It saves the access record in the Administration scope as the caller. With the realAgent template, it
 // completes the open "Add Real Agent" tasks setup left in Administration, with the access record linked as the evidence
 // that supports each. One transaction: a failure keeps nothing in OKB.
 //
@@ -43,20 +43,28 @@ const ACTIONS = ["read", "create", "edit", "start", "hold", "complete", "reopen"
 type Grant = { scope: string; record_kinds: string[]; actions: string[]; own_records: boolean };
 class Refused extends Error { constructor(public status: number, text: string) { super(text); } }
 
+/** The level of a sign-in Supabase Auth has confirmed, from its token's aal claim: aal2 once the sign-in gave a code
+ * from an authenticator app, aal1 otherwise. OKB refuses an administrator's call at aal1 where its second factor
+ * setting says. */
+function levelOf(token: string): string {
+  try { return JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).aal === "aal2" ? "aal2" : "aal1"; }
+  catch { return "aal1"; }
+}
+
 /** The signed-in caller and their token, as Supabase Auth itself confirms, or null. */
-async function signedIn(req: Request): Promise<{ id: string; token: string; key: string } | null> {
+async function signedIn(req: Request): Promise<{ id: string; token: string; key: string; aal: string } | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   const key = req.headers.get("apikey") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   if (!token) return null;
   const res = await fetch(`${PROJECT}/auth/v1/user`, { headers: { Authorization: `Bearer ${token}`, apikey: key } }).catch(() => null);
   const user = res?.ok ? await res.json().catch(() => null) : null;
-  return typeof user?.id === "string" ? { id: user.id, token, key } : null;
+  return typeof user?.id === "string" ? { id: user.id, token, key, aal: levelOf(token) } : null;
 }
 
 /** Runs fn as the caller, as PostgREST does for a signed-in request: their claims, then the authenticated role. */
 // deno-lint-ignore no-explicit-any
-async function asCaller(tx: any, id: string) {
-  await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: id, role: "authenticated" })}, true)`;
+async function asCaller(tx: any, caller: { id: string; aal: string }) {
+  await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: caller.id, role: "authenticated", aal: caller.aal })}, true)`;
   await tx`set local role authenticated`;
 }
 // deno-lint-ignore no-explicit-any
@@ -81,9 +89,9 @@ async function templateGrants(tx: any, code: string): Promise<{ authority_class:
 
 /** A workflow role's grants, from the newest release of the workflow's access.json that the caller may read. */
 // deno-lint-ignore no-explicit-any
-async function roleGrants(tx: any, caller: { id: string; token: string; key: string }, workflow: string, role: string): Promise<Grant[]> {
+async function roleGrants(tx: any, caller: { id: string; token: string; key: string; aal: string }, workflow: string, role: string): Promise<Grant[]> {
   const bucket = `plugins_${workflow.replaceAll("-", "_")}`;
-  await asCaller(tx, caller.id);
+  await asCaller(tx, caller);
   const releases = (await tx`select name from storage.objects where bucket_id = ${bucket} and name ~ '^[^/]+/MANIFEST$' order by name desc`)
     .map((r: { name: string }) => r.name.split("/")[0]);
   await asPostgres(tx);
@@ -153,7 +161,7 @@ Deno.serve(async (req) => {
     // deno-lint-ignore no-explicit-any
     const result = await db.begin(async (tx: any) => {
       // Who the caller is, as OKB itself answers it for their sign-in.
-      await asCaller(tx, caller.id);
+      await asCaller(tx, caller);
       // deno-lint-ignore no-explicit-any
       let me: any;
       try { [{ me }] = await tx`select okb.okb_get_actor() as me`; }
@@ -229,7 +237,7 @@ Deno.serve(async (req) => {
         : [];
 
       // The access record, and the tasks it closes, as the caller.
-      await asCaller(tx, caller.id);
+      await asCaller(tx, caller);
       const what = template ? `the ${template} access template` : `the ${role} role in the ${workflow} workflow`;
       const summary = `${me.display_name} ${found ? "added" : "invited"} ${actor.display_name} (${email}) and gave them ${what}`
         + (given.length ? `: ${given.map(g => plain(g, scopes)).join("; ")}.` : ", whose grants they already held.")

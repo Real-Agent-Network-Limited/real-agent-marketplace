@@ -1,4 +1,4 @@
-// Records, for the session, each Google or Microsoft 365 connector the person agreed the database operator may use. Claude Code runs it as a PostToolUse hook, only once a call has run: agent-tools.mjs put a connector's
+// Records, for the session, each connector or plugin the person agreed the database operator may use. Claude Code runs it as a PostToolUse hook, only once a call has run: agent-tools.mjs put a connector's
 // first call in a session to the person with permissionDecision "ask", so a call that ran is one the person allowed.
 // Reads the call from stdin; any other agent's calls, and any other tool, are left alone. It never refuses anything.
 import { realpathSync } from "node:fs";

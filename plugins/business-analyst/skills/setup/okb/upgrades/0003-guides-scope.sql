@@ -1,5 +1,5 @@
 -- 0003-guides-scope
--- base: 98a8ac4
+-- base: new
 -- Plan 1's decision 2.30 for a project built before it. The Guides scope, guides, keeps Real Agent's guides,
 -- docs/support/, which scripts/load-guides.mjs loads there as Real Agent's actor. Every actor reads it: the basic
 -- and real_agent templates gain a grant there, unless an administrator has changed the template, and an

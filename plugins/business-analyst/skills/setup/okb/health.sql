@@ -1,5 +1,5 @@
 -- OKB setup: the health check at the end of setup, in place of the release checks, which are Real Agent's own and
--- never run in a client's project. Reads only, as postgres, through the Supabase connector's execute_sql. One row,
+-- never run in a client's project. Reads only, as postgres, through Supabase's Management API. One row,
 -- whose ok is true when every part is:
 --   scopes        the six scopes are there, each enabled, with a sessions scope for each person with a sign-in; a
 --                 person invited with a code gets theirs when they spend it;

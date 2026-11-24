@@ -1,7 +1,6 @@
-// okb-upgrade: applies one of Real Agent's signed upgrades to the firm's OKB, for Real Agent's own actor. Deploy it with
-// verify_jwt on, through the Supabase connector's deploy_edge_function, with upgrade-key.ts beside it. It stays
-// deployed: setup deploys it with the others. It is how Real Agent keeps a client's OKB current, with no role in the
-// client's Supabase organisation.
+// okb-upgrade: applies one of Real Agent's signed upgrades to the firm's OKB, for Real Agent's own actor. The setup command
+// deploys it through the Management API with verify_jwt on, with upgrade-key.ts beside it, and it stays deployed. It
+// is how Real Agent keeps a client's OKB current, with no role in the client's Supabase organisation.
 //
 // POST .../okb-upgrade, with the caller's own sign-in, JSON { series, number, name, sql, signature }, which
 // scripts/sign-upgrade.mjs writes: series "okb" for the upgrades/ folder or "file_search" for file-search-upgrades/,
@@ -35,14 +34,22 @@ const json = (status: number, body: unknown) =>
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 class Refused extends Error { constructor(public status: number, text: string) { super(text); } }
 
+/** The level of a sign-in Supabase Auth has confirmed, from its token's aal claim: aal2 once the sign-in gave a code
+ * from an authenticator app, aal1 otherwise. OKB refuses an administrator's call at aal1 where its second factor
+ * setting says. */
+function levelOf(token: string): string {
+  try { return JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).aal === "aal2" ? "aal2" : "aal1"; }
+  catch { return "aal1"; }
+}
+
 /** The signed-in caller, as Supabase Auth itself confirms, or null. */
-async function signedIn(req: Request): Promise<string | null> {
+async function signedIn(req: Request): Promise<{ id: string; aal: string } | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   const key = req.headers.get("apikey") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   if (!token) return null;
   const res = await fetch(`${PROJECT}/auth/v1/user`, { headers: { Authorization: `Bearer ${token}`, apikey: key } }).catch(() => null);
   const user = res?.ok ? await res.json().catch(() => null) : null;
-  return typeof user?.id === "string" ? user.id : null;
+  return typeof user?.id === "string" ? { id: user.id, aal: levelOf(token) } : null;
 }
 
 const fromBase64 = (text: string) => Uint8Array.from(atob(text), c => c.charCodeAt(0));
@@ -70,7 +77,7 @@ Deno.serve(async (req) => {
       // One upgrade at a time in a project.
       await tx`select pg_advisory_xact_lock(hashtext('okb-upgrade'))`;
       // Who the caller is, as OKB itself answers it for their sign-in.
-      await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: caller, role: "authenticated" })}, true)`;
+      await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: caller.id, role: "authenticated", aal: caller.aal })}, true)`;
       await tx`set local role authenticated`;
       // deno-lint-ignore no-explicit-any
       let me: any;
@@ -78,16 +85,16 @@ Deno.serve(async (req) => {
       catch { throw new Refused(403, "Your sign-in has no actor in this Real Agent knowledge base, so it applies no upgrade."); }
       await tx`reset role`;
       await tx`select set_config('request.jwt.claims', '', true)`;
-      const [{ realAgent }] = await tx`select a.enabled and a.actor_kind = 'human' and t.code is not null and jsonb_array_length(t.grants) > 0
+      const [{ real_agent }] = await tx`select a.enabled and a.actor_kind = 'human' and t.code is not null and jsonb_array_length(t.grants) > 0
         and not exists(select 1 from jsonb_array_elements(t.grants) g where not exists(
           select 1 from okb.authorisation z join okb.scope s using (scope_id)
           where z.executor_actor_id = a.actor_id and s.code = g->>'scope' and z.record_id is null and z.mode = 'standing_permission'
             and z.record_kinds @> array(select jsonb_array_elements_text(g->'record_kinds'))
             and z.allowed_actions @> array(select jsonb_array_elements_text(g->'actions'))
             and ((g->>'own_records')::boolean or not z.own_records)
-            and okb_private.authority_live(z.authorisation_id))) as "realAgent"
+            and okb_private.authority_live(z.authorisation_id))) as "real_agent"
         from okb.actor a left join okb.access_template t on t.code = 'real_agent' where a.actor_id = ${me.actor_id}`;
-      if (!realAgent) throw new Refused(403, "Only Real Agent's own actor, with the real_agent access template, applies an upgrade.");
+      if (!real_agent) throw new Refused(403, "Only Real Agent's own actor, with the real_agent access template, applies an upgrade.");
 
       // The upgrade, as Real Agent signed it.
       const series = typeof body?.series === "string" ? body.series : "okb";

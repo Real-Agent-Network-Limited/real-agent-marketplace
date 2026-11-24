@@ -1,5 +1,5 @@
 -- 0002-administration-and-plugin-scopes
--- base: 2052799
+-- base: new
 -- Two of plan 1's decisions for a project built before them. The Administration scope, administration, keeps
 -- the setup record and each access record: who set the project up, each actor made, each grant given and why.
 -- The client's administrators work in it with their authority, and Real Agent's staff read it with the

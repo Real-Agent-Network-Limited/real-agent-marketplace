@@ -1,0 +1,13 @@
+/* An A4 page the print skill writes, the glossary, the data dictionary or an SOP, after its own style: the brand's text,
+   rules and accent on white paper, its fonts, and its logo above the title. Every value is a --brand- property. */
+body { color: var(--brand-ink); font-family: var(--brand-body-font); }
+h1, h2, h3 { font-family: var(--brand-heading-font); }
+h2 { border-bottom-color: var(--brand-accent); }
+p.meta, figcaption { color: var(--brand-muted); }
+th, td { border-bottom-color: var(--brand-rule); }
+th { background: var(--brand-surface); }
+.state { border-color: var(--brand-rule); border-left: 1mm solid var(--brand-accent); }
+figure img { border-color: var(--brand-rule); }
+a { color: var(--brand-accent-text); }
+.brand-logo { display: block; height: 12mm; width: auto; max-width: 60mm; object-fit: contain; margin: 0 0 4mm; }
+@media print { th, .state { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }

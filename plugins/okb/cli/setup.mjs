@@ -7,7 +7,8 @@
 //
 //   node okb.mjs setup [--folder <folder>] --email <email> [--url <project URL> --key <publishable key>] [--agent <plugin>:<agent>] [--new-password]
 //   node okb.mjs setup [--folder <folder>] --email <email> --url <project URL> --key <publishable key> --join [--agent <plugin>:<agent>]
-//   node okb.mjs setup --owner [--folder <folder>]
+//   node okb.mjs setup --owner --folder <folder>
+//   node okb.mjs setup --owner [--folder <folder>] --folder-only
 //
 // --join is the first sign-in of a person their administrator added with a one-time invitation code: the sign-in asks
 // the code and the password they choose, twice, in place of a password someone gave them. Every other step is the same.
@@ -15,22 +16,24 @@
 // The folder is ~/real-agent unless --folder names another. A folder set up before under another name, such as
 // ~/okb, keeps working: run setup again with --folder naming it.
 //
-// --owner is the firm's owner's first run, before the firm has a Supabase project: it makes the folder, names the
-// business analyst as its agent and installs its plugin, and neither signs in nor runs okb sync, since there is no
-// project yet. The owner then types "Set up Real Agent" in a session on the folder.
+// --owner is the firm's owner's setup of Real Agent, and needs --folder: it makes the folder, names the firm
+// analyst as its agent and installs its plugin, then sets Real Agent up in one run through Supabase's Management API, as owner-setup.mjs describes,
+// and ends with okb sync in the folder. With --folder-only, as the install script runs it before the owner has a Supabase
+// account, it stops once the folder is made, and the owner then types "Set up Real Agent" in a session on the folder.
 //
 // Each step prints what it did, or that it was already done, so running it again is safe. A failed step
 // stops the run with Claude Code's or the sign-in's message, and every step before it stays done.
 import process from "node:process";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { endSetup, markSetup } from "../mcp/lib/setup-marker.mjs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { accountEmail } from "../mcp/lib/session.mjs";
 import { readActor } from "../mcp/lib/actor-file.mjs";
 import { nodeMismatch } from "./node-version.mjs";
+import { osMismatch } from "./os-version.mjs";
+import { ownerSetup } from "./owner-setup.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 /** The marketplace this command runs from, such as Claude Code's copy of the real-agent marketplace. */
@@ -47,7 +50,8 @@ export const OWNER_PHRASE = "Set up Real Agent";
 
 export const SETUP_USAGE = `Usage: node okb.mjs setup [--folder <folder>] --email <email> [--url <project URL> --key <publishable key>] [--agent <plugin>:<agent>] [--new-password]
        node okb.mjs setup [--folder <folder>] --email <email> --url <project URL> --key <publishable key> --join [--agent <plugin>:<agent>]
-       node okb.mjs setup --owner [--folder <folder>]
+       node okb.mjs setup --owner --folder <folder>
+       node okb.mjs setup --owner [--folder <folder>] --folder-only
 
 setup sets up a folder for one person in their firm's OKB: the folder, ~/${DEFAULT_FOLDER} unless --folder
 names another, where you put files for your agent and your agent keeps its work, the agent the folder works with, ${DEFAULT_AGENT} unless --agent names another, that agent's plugin
@@ -60,30 +64,36 @@ the first password.
 --join is for a person their administrator added with a one-time invitation code. The sign-in asks for the code
 and a password you choose, twice, and needs --url and --key.
 
---owner is for the firm's owner, before the firm has a Supabase project. It makes the folder, names the
-business analyst, ${OWNER_AGENT}, as the folder's agent, and installs its plugin. It neither signs in
-nor runs okb sync. The owner then types "${OWNER_PHRASE}" in a session opened on the folder.`;
+--owner is for the firm's owner. It makes the folder, names the business analyst, ${OWNER_AGENT}, as the
+folder's agent, and installs its plugin. Then it sets Real Agent up in one run: it asks for a Supabase access token,
+your firm's name, your name, your email and the password you choose, builds your Real Agent knowledge base in your
+Supabase project, and makes the settings of Real Agent's connector. Run it again after a stop, and it carries on.
+--folder-only stops once the folder is made, with no sign-in and no okb sync. The owner then types
+"${OWNER_PHRASE}" in a session opened on the folder.`;
 
 const VALUED = ["--email", "--folder", "--agent", "--url", "--key"];
 
 /** The command line's options. */
 export function parseSetup(argv) {
-  const out = { newPassword: false, owner: false, join: false };
+  const out = { newPassword: false, owner: false, join: false, folderOnly: false };
   for (let i = 0; i < argv.length; i++) {
     const word = argv[i];
     if (word === "--new-password") out.newPassword = true;
     else if (word === "--owner") out.owner = true;
     else if (word === "--join") out.join = true;
+    else if (word === "--folder-only") out.folderOnly = true;
     else if (VALUED.includes(word)) {
       if (argv[i + 1] === undefined || argv[i + 1].startsWith("--")) throw new Error(`${word} needs a value.`);
       out[word.slice(2)] = argv[++i];
     } else throw new Error(`${word} is not an option of setup.`);
   }
+  if (out.folderOnly && !out.owner) throw new Error("--folder-only goes with --owner.");
   if (out.owner) {
     const other = ["email", "url", "key", "agent"].filter(name => out[name] !== undefined).map(name => `--${name}`);
     if (out.newPassword) other.push("--new-password");
     if (out.join) other.push("--join");
     if (other.length) throw new Error(`--owner takes only --folder, since there is no project to sign in to yet: leave out ${other.join(", ")}.`);
+    if (!out.folderOnly && out.folder === undefined) throw new Error("--owner needs --folder, the folder setup keeps its files in.");
     out.agent = OWNER_AGENT;
     return out;
   }
@@ -185,13 +195,14 @@ function runSync(syncArgs, folder, say) {
 /**
  * Runs setup. `signInArgs` builds okb.mjs sign-in's arguments, and `signInPath` names the sign-in to run.
  * `syncArgs` is the node command line of okb sync, run in the folder once the folder is signed in.
- * Returns 0 when every step is done, 1 when a step failed, and 2 for a wrong command line.
+ * Returns 0 when every step is done, 1 when a step failed, and 2 for a wrong command line. With --owner, and without
+ * --folder-only, it returns a promise of owner-setup.mjs's exit code, which may also be 3, run again later.
  */
 export function setup(argv, { home = homedir(), signInArgs, signInPath, syncArgs = [resolve(HERE, "okb.mjs"), "sync"], marketplace = MARKETPLACE, say = line => process.stdout.write(`${line}\n`), fail = line => process.stderr.write(`${line}\n`) } = {}) {
   let o;
   try { o = parseSetup(argv); }
   catch (err) { fail(`${err.message}\n${SETUP_USAGE}`); return 2; }
-  const mismatch = nodeMismatch();
+  const mismatch = nodeMismatch() ?? osMismatch();
   if (mismatch) { fail(mismatch); return 1; }
   try {
     const agents = marketplaceAgents(marketplace);
@@ -206,8 +217,11 @@ export function setup(argv, { home = homedir(), signInArgs, signInPath, syncArgs
       runClaude(["plugin", "install", `${plugin}@${MARKETPLACE_NAME}`], say);
     }
     if (o.owner) {
-      // Setup is under way in the folder until a signed-in okb setup ends it.
-      markSetup(folder);
+      if (!o.folderOnly) {
+        // Setup ends in the folder with okb sync, which installs the firm's own release of its plugins.
+        const endFolder = f => runSync(syncArgs, f, say);
+        return ownerSetup(["--folder", folder], { say, endFolder });
+      }
       say(`Done. Start a new Code session on ${folder}, and type: ${OWNER_PHRASE}`);
       return 0;
     }
@@ -220,8 +234,6 @@ export function setup(argv, { home = homedir(), signInArgs, signInPath, syncArgs
       runSignIn(signInPath, signInArgs([...(o.newPassword ? ["--new-password"] : []), ...(o.join ? ["--join"] : []), ...where, "--folder", folder, "--email", o.email], o.email).slice(1), say);
     }
     runSync(syncArgs, folder, say);
-    // A folder signed in and synced has finished setup: its agent keeps to the okb plugin's tools from now on.
-    endSetup(folder);
     say(`Done. Start a new Code session on ${folder}, and type: who am I?`);
     return 0;
   } catch (err) {

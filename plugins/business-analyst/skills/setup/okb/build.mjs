@@ -1,25 +1,25 @@
 #!/usr/bin/env node
-// The business analyst's helper for setup, run with Bash on the owner's computer, from this folder's files. It needs
-// Node alone: no Supabase command-line tool, and no password, key or token beyond the project's publishable key,
-// which is public.
+// Setup's helper, on the owner's computer, from this folder's files. The setup command, okb setup --owner, imports
+// it, and a person working by hand can run it. It needs Node alone, with no Supabase command-line tool. It needs no
+// password, key or token beyond the project's publishable key, which is public.
 //
-//   node build.mjs approve --ref <project reference> --folder <setup folder> --firm <firm's name> [--reset]
+//   node build.mjs approve --ref <project reference> --folder <setup folder> --firm <firm's name> [--slug <slug>] [--reset]
 //   node build.mjs run --url <project URL> [--key <publishable key>] [--ref <project reference>] <file> [<file> ...]
 //   node build.mjs functions
 //   node build.mjs real-agent-code --folder <setup folder>
 //
-// approve prints one SQL statement for the Supabase connector's execute_sql. It makes the okb_setup schema, which
-// the okb-setup hosted function reads, and approves this folder's setup files by their SHA-256, each to run once:
+// approve prints one SQL statement, which the setup command runs through the Management API. It makes the okb_setup
+// schema, which the okb-setup hosted function reads, and approves this folder's setup files by their SHA-256, each to run once:
 // setup.sql, file-search.sql, file-search-scopes.sql, schedule.sql with the project reference filled in, and
 // first-administrator.sql, with reset.sql too for --reset. It keeps the firm's name, --firm, in okb_setup.firm, which
-// okb-setup sends Real Agent's website with each code, so Real Agent knows whose project it is. It also writes a new sign-in code to the setup folder's
+// okb-setup sends Real Agent's connector with each code, so Real Agent knows whose project it is. It also writes a new sign-in code to the setup folder's
 // .okb-owner-code, readable by the owner alone, for the owner's first sign-in, and approves the code by its SHA-256
 // for a day. The code itself is never printed.
 //
 // run sends each file, in order, to the okb-setup hosted function, which runs it as postgres. It prints one line
 // per file, and stops at the first that fails, with the database's message. Exit code 1 then.
 //
-// functions prints, as JSON, each hosted function to deploy with the connector's deploy_edge_function, in order:
+// functions prints, as JSON, each hosted function the setup command deploys through the Management API, in order:
 // its name, its verify_jwt setting, its entrypoint and the full path of each of its files, with the name each file
 // is deployed under.
 //
@@ -46,20 +46,24 @@ export const REAL_AGENT_CODE_FILE = ".okb-real-agent-code";
 /**
  * The hosted functions, in the order setup deploys them. okb-setup runs the setup files; the file search
  * functions follow, each with every file it imports; then okb-invite, which stays, for the business analyst's invitations,
- * okb-join, where an invited person spends their code and chooses their password, and okb-upgrade, which applies Real
- * Agent's signed upgrades for Real Agent's own actor.
+ * okb-join, where an invited person spends their code and chooses their password, password-reset, which gives an
+ * administrator a person's reset code, okb-upgrade, which applies Real Agent's
+ * signed upgrades for Real Agent's own actor, and graph-reader, which stays off until an administrator adds the firm's
+ * own Anthropic API key.
  */
 export const FUNCTIONS = [
   { name: "okb-setup", verify_jwt: false, files: ["index.ts", "real-agent.ts"] },
-  { name: "file-search-worker", verify_jwt: false, files: ["index.ts", "text.ts"] },
+  { name: "file-search-worker", verify_jwt: false, files: ["index.ts", "text.ts", "vendor/sheetjs-0.20.3/xlsx.mjs", "vendor/sheetjs-0.20.3/types/index.d.ts"] },
   { name: "file-search", verify_jwt: true, files: ["index.ts"] },
   { name: "file-search-purge", verify_jwt: true, files: ["index.ts"] },
   { name: "okb-invite", verify_jwt: true, files: ["index.ts"] },
   { name: "okb-join", verify_jwt: false, files: ["index.ts"] },
+  { name: "password-reset", verify_jwt: true, files: ["index.ts"] },
   { name: "okb-upgrade", verify_jwt: true, files: ["index.ts", "upgrade-key.ts"] },
+  { name: "graph-reader", verify_jwt: false, files: ["index.ts", "prompt.ts"] },
 ];
 
-export const USAGE = `Usage: node build.mjs approve --ref <project reference> --folder <setup folder> --firm <firm's name> [--reset]
+export const USAGE = `Usage: node build.mjs approve --ref <project reference> --folder <setup folder> --firm <firm's name> [--slug <slug>] [--reset]
        node build.mjs run --url <project URL> [--key <publishable key>] [--ref <project reference>] <file> [<file> ...]
        node build.mjs functions
        node build.mjs real-agent-code --folder <setup folder>`;
@@ -76,14 +80,17 @@ export function fileText(name, ref, folder = HERE) {
   return text.replaceAll("<project reference>", ref);
 }
 
-/** A firm's name as Real Agent's website takes it: 1 to 200 characters, with no control character. */
+/** A firm's slug: lower-case words and numbers joined by hyphens, 2 to 40 characters. */
+export const SLUG = /^(?=.{2,40}$)[a-z0-9]+(-[a-z0-9]+)*$/;
+/** A firm's name as Real Agent's connector takes it: 1 to 200 characters, with no control character. */
 export const FIRM = /^[^\p{Cc}]{1,200}$/u;
 
 /** The statement that makes okb_setup and approves the files and the owner's code, and the code file it wrote. */
-export function approve({ ref, folder, firm, reset = false }, { here = HERE, code = randomBytes(32).toString("hex") } = {}) {
+export function approve({ ref, folder, firm, slug, reset = false }, { here = HERE, code = randomBytes(32).toString("hex") } = {}) {
   if (!PROJECT_REF.test(ref ?? "")) throw new Error(`${ref ?? "--ref"} is not a project reference.`);
   const name = (firm ?? "").trim();
   if (!FIRM.test(name)) throw new Error(`--firm needs the firm's name, of 1 to 200 characters.`);
+  if (slug !== undefined && slug !== null && !SLUG.test(slug)) throw new Error(`--slug needs lower-case words and numbers joined by hyphens, of 2 to 40 characters.`);
   if (!folder || !existsSync(folder)) throw new Error(`${folder ?? "--folder"} is not a folder.`);
   const codeFile = join(resolve(folder), OWNER_CODE_FILE);
   writeFileSync(codeFile, `${code}\n`, { mode: 0o600 });
@@ -98,12 +105,13 @@ create table if not exists okb_setup.person (auth_user_id uuid primary key, name
 create table if not exists okb_setup.open_task (position int primary key, title text not null, description text not null, completion_requirements text not null);
 create table if not exists okb_setup.staff_code (email text primary key, name text not null, code_sha256 text not null, expires_at timestamptz not null);
 create table if not exists okb_setup.firm (one_row boolean primary key default true check (one_row), name text not null);
+alter table okb_setup.firm add column if not exists slug text;
 revoke all on all tables in schema okb_setup from public, anon, authenticated;
 delete from okb_setup.approved;
 insert into okb_setup.approved (sha256, name) values
  ${rows};
 delete from okb_setup.firm;
-insert into okb_setup.firm (name) values (${literal(name)});
+insert into okb_setup.firm (name, slug) values (${literal(name)}, ${slug ? literal(slug) : "null"});
 delete from okb_setup.owner_code;
 insert into okb_setup.owner_code (sha256, expires_at) values (${literal(sha256(code))}, now() + interval '1 day');
 select name from okb_setup.approved order by approved_at, name;`;
@@ -132,15 +140,15 @@ export function functions(here = HERE) {
 /** The day a code runs out, in words, such as 1 November 2026. */
 const day = iso => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
 
-/** Real Agent's codes from the setup folder, one line each, and the file deleted. */
-export function realAgentCodes(folder) {
+/** Real Agent's codes from the setup folder, one line each, and the file deleted, unless keep is true. */
+export function realAgentCodes(folder, { keep = false } = {}) {
   if (!folder || !existsSync(folder)) throw new Error(`${folder ?? "--folder"} is not a folder.`);
   const file = join(resolve(folder), REAL_AGENT_CODE_FILE);
   if (!existsSync(file)) throw new Error(`${folder} holds no ${REAL_AGENT_CODE_FILE}: the owner's sign-in saved no code for Real Agent, or it was read already.`);
   let codes;
   try { codes = JSON.parse(readFileSync(file, "utf8")); } catch { codes = null; }
   if (!Array.isArray(codes)) throw new Error(`${file} is not the list the owner's sign-in saves.`);
-  rmSync(file, { force: true });
+  if (!keep) rmSync(file, { force: true });
   return codes.map(c => `${c.name}, ${c.email}: ${c.code}, until ${day(c.expires_at)}`);
 }
 
@@ -149,7 +157,7 @@ function options(argv) {
   for (let i = 0; i < argv.length; i++) {
     const word = argv[i];
     if (word === "--reset") out.reset = true;
-    else if (["--ref", "--folder", "--url", "--key", "--firm"].includes(word)) {
+    else if (["--ref", "--folder", "--url", "--key", "--firm", "--slug"].includes(word)) {
       if (argv[i + 1] === undefined) throw new Error(`${word} needs a value.`);
       out[word.slice(2)] = argv[++i];
     } else if (word.startsWith("--")) throw new Error(`${word} is not an option.`);

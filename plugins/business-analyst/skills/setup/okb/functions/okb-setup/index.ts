@@ -1,11 +1,10 @@
 // okb-setup: builds OKB in the firm's project from the setup files on the owner's computer, and makes the owner's
-// own sign-in, so neither the Supabase command-line tool nor a paste into the SQL Editor is needed. Deploy it with
-// verify_jwt off, through the Supabase connector's deploy_edge_function, with real-agent.ts beside it: it checks
-// each call itself.
+// own sign-in, so neither the Supabase command-line tool nor a paste into the SQL Editor is needed. The setup command
+// deploys it through the Management API with verify_jwt off, with real-agent.ts beside it. It checks each call itself.
 //
 // POST .../okb-setup/sql, the body one setup file's text. It runs a file only when the file's SHA-256 is in
-// okb_setup.approved, which only the project's postgres login writes, such as the business analyst through the
-// connector's execute_sql. Each approval runs once. The file runs as postgres, as the SQL Editor runs it: sent as one
+// okb_setup.approved, which only the project's postgres login writes, such as the setup command through the
+// Management API. Each approval runs once. The file runs as postgres, as the SQL Editor runs it: sent as one
 // request, it is one implicit transaction, so a failure keeps nothing of it, and the approval stays for a second try.
 // Response: { ok: true, name } or { ok: false, problem }.
 //
@@ -15,19 +14,20 @@
 // admin API; an Auth user an earlier attempt made for the same email gets the new password instead. For each of Real
 // Agent's staff real-agent.ts lists, it reuses the Auth user Auth holds for the email, or else makes a one-time
 // invitation code, as okb-invite makes one: three groups of four from an alphabet with no look-alike letters or digits,
-// valid for 7 days. It sends no email. It sends each code to Real Agent's website, ACCESS_URL, as JSON { project_url,
-// email, code, expires, firm, owner_name, owner_email, publishable_key }, with a 5-second limit: the owner's agreement
+// valid for 7 days. It sends no email. It sends each code to Real Agent's connector, ACCESS_URL, as JSON { project_url,
+// email, code, expires, firm, owner_name, owner_email, publishable_key, slug }, with a 5-second limit: the owner's agreement
 // to setup covers this. firm is the firm's name, from okb_setup.firm, which build.mjs approve keeps, and the owner's
 // name and email are theirs from this sign-in, so Real Agent knows whose project the code opens. publishable_key is the
 // project's publishable key, which the sign-in sends as its apikey header, so Real Agent can redeem the code. It goes
 // only when it is a publishable key, sb_publishable_..., or a legacy key whose role is anon, and is left out otherwise,
-// so a secret key never leaves the project. It records each person with
+// so a secret key never leaves the project. slug is the firm's slug, from okb_setup.firm, and is left out when
+// build.mjs approve was given none. It records each person with
 // an Auth user in okb_setup.person, and each code's SHA-256 alone in okb_setup.staff_code, for first-administrator.sql,
 // which makes the actors and the invitations okb-join spends. It records each loose end in okb_setup.open_task, which
 // first-administrator.sql saves as an open task for the owner: "Send Real Agent its invitation code" for each code the
-// website did not take, and "Add Real Agent as a user" when the staff list is empty. It spends the sign-in code.
+// connector did not take, and "Add Real Agent as a user" when the staff list is empty. It spends the sign-in code.
 // Response: { ok: true, email, real_agent, real_agent_codes: [{ name, email, code, expires_at }], open_tasks } or
-// { ok: false, problem }. real_agent_codes holds only the codes the website did not take, each once, and the sign-in
+// { ok: false, problem }. real_agent_codes holds only the codes the connector did not take, each once, and the sign-in
 // saves them for the business analyst's summary. The password is never stored, logged or returned.
 import postgres from "npm:postgres@3.4.9";
 import { ACCESS_URL, STAFF } from "./real-agent.ts";
@@ -96,8 +96,8 @@ export function openTasks(staff: { name: string; email: string }[], coded: { nam
   return tasks;
 }
 
-/** Sends one code to Real Agent's website. True only when it answers 2xx within 5 seconds. */
-async function deliver(c: { email: string; code: string; expires_at: string }, who: { firm: string; owner_name: string; owner_email: string; publishable_key?: string }): Promise<boolean> {
+/** Sends one code to Real Agent's connector. True only when it answers 2xx within 5 seconds. */
+async function deliver(c: { email: string; code: string; expires_at: string }, who: { firm: string; owner_name: string; owner_email: string; publishable_key?: string; slug?: string }): Promise<boolean> {
   if (!ACCESS_URL) return false;
   try {
     const res = await fetch(ACCESS_URL, {
@@ -164,10 +164,12 @@ async function owner(db: any, body: Record<string, unknown>, apikey: string | nu
     const code = newCode();
     coded.push({ name: one.name, email: address, code, sha256: await codeHash(code), expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString() });
   }
-  // Each code Real Agent's website takes needs nothing from the owner. Any other goes in the summary and an open task.
-  const [firm] = coded.length ? await db`select name from okb_setup.firm` : [];
+  // Each code Real Agent's connector takes needs nothing from the owner. Any other goes in the summary and an open task.
+  // to_jsonb, so a firm table an older approve made, with no slug column, reads as no slug.
+  const [firmRow] = coded.length ? await db`select to_jsonb(f) as row from okb_setup.firm f` : [];
+  const firm = firmRow?.row as { name: string; slug?: string | null } | undefined;
   const key = publishableKey(apikey);
-  const who = { firm: firm?.name ?? "", owner_name: name, owner_email: email, ...(key ? { publishable_key: key } : {}) };
+  const who = { firm: firm?.name ?? "", owner_name: name, owner_email: email, ...(key ? { publishable_key: key } : {}), ...(firm?.slug ? { slug: firm.slug } : {}) };
   const unsent: typeof coded = [];
   for (const c of coded) if (!firm || !await deliver(c, who)) unsent.push(c);
   const tasks = openTasks(STAFF, unsent);

@@ -110,7 +110,7 @@ Each person starts a session in Claude desktop, on their office computer, in the
 
 ## 5. Lesson 4: Calling a workflow agent with @
 
-Each of the firm's workflows is one plugin with one agent, and each routine in it is one skill. The person calls an agent by typing `@` and its name, such as `@appraisal:appraisal`. Every folder has the business analyst, `@business-analyst:business-analyst`, which writes down the firm's workflows and their routines.
+Each of the firm's workflows is one plugin with one agent, and each routine in it is one skill. The person calls an agent by typing `@` and its name, such as `@orders:orders`. Every folder has the business analyst, `@business-analyst:business-analyst`, which writes down the firm's workflows and their routines.
 
 1. **List the agents in the folder.**
    - **Person:** types `@` in a session, and reads the list Claude desktop offers.
@@ -132,7 +132,7 @@ The database operator answers only from what the Real Agent knowledge base retur
    - **Person:** types "What is assigned to me?" Without the agent, runs `okb okb_get_assigned`.
    - **The agent:** calls `okb_get_assigned`, as the `okb:records` skill's section 9 describes, and gives each task with its scope and finish date.
 2. **Ask about a record the person knows.** A plan, a decision or a routine they have worked on will do.
-   - **Person:** types a question such as "What does the record called Valuations say?" Without the agent, runs `okb okb_find_records p_title="<words of the title>"`, then `okb okb_show_record p_record="<record id>"`.
+   - **Person:** types a question such as "What does the record called Price list say?" Without the agent, runs `okb okb_find_records p_title="<words of the title>"`, then `okb okb_show_record p_record="<record id>"`.
    - **The agent:** finds and reads the record with `okb_find_records` and `okb_get_record`, as the `okb:records` skill's section 2 describes. It names the record each part of the answer comes from.
 3. **Save the lesson,** with the question and the answer quoted.
    - **Person:** saves the lesson as section 1 says.

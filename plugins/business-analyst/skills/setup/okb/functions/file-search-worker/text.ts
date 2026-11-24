@@ -1,9 +1,8 @@
 // Text out of a file, and chunks out of the text.
 import { extractText, getDocumentProxy } from "npm:unpdf@1.8.1";
-// The vendored SheetJS 0.20.3, from Real Agent's public marketplace at a fixed commit: Supabase fetches imports only
-// from hosts it allows, and SheetJS's own site is not one. test/stand-in/run.sh checks these bytes match SHA256SUMS.
-// @deno-types="https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/56ab9cc5146c9b43461ec77feb16d6164b855d0d/plugins/business-analyst/skills/setup/okb/functions/file-search-worker/vendor/sheetjs-0.20.3/types/index.d.ts"
-import * as XLSX from "https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/56ab9cc5146c9b43461ec77feb16d6164b855d0d/plugins/business-analyst/skills/setup/okb/functions/file-search-worker/vendor/sheetjs-0.20.3/xlsx.mjs";
+// SheetJS 0.20.3, kept in the worker's vendor folder and deployed with it; vendor/sheetjs-0.20.3/SHA256SUMS records its files.
+// @deno-types="./vendor/sheetjs-0.20.3/types/index.d.ts"
+import * as XLSX from "./vendor/sheetjs-0.20.3/xlsx.mjs";
 import mammoth from "npm:mammoth@1.12.3";
 import { strFromU8, unzipSync } from "npm:fflate@0.8.2";
 import { Buffer } from "node:buffer";

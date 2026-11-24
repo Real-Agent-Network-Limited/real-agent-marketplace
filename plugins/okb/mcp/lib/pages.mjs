@@ -6,6 +6,10 @@
 // workbook scripts, on files directly inside one folder.
 // `check_text` runs the humanizer plugin's checks, copied beside this file, on a text there. `copy_samples` copies
 // the check skill's samples into the folder.
+// `draw_reference`, `draw_sop`, `report_page` and `embed_pictures` with style deck take the firm's brand, read with
+// readBrand each time, from the okb plugin's styles/: the brand's --brand- properties, then the kind's stylesheet, after
+// the page's own style, with the brand's logo. With no Brand record, no sign-in or no grant, the page is plain. Each
+// gives look, brand or plain.
 // The MCP server and the okb command both make them with createTools.
 import { execFile } from "node:child_process";
 import { closeSync, constants, fstatSync, fsyncSync, lstatSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, realpathSync, rmSync, writeFileSync } from "node:fs";
@@ -14,9 +18,12 @@ import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { check as humanizerCheck } from "./humanizer-checks.mjs";
+import { logoHtml, printStyle } from "./brand.mjs";
 
 const SKILLS = fileURLToPath(new URL("../../skills/", import.meta.url));
 const HERE = fileURLToPath(new URL(".", import.meta.url));
+// The brand's stylesheets: tokens.css and one for each kind of card or page.
+const STYLES = fileURLToPath(new URL("../../styles/", import.meta.url));
 // The skill folder each script is in.
 const SCRIPT_SKILL = { "graph_page.py": "graph", "search_page.py": "graph", "plan_graph.py": "graph", "model_to_page.py": "graph", "page_to_model.py": "graph", "board_page.py": "board", "model_board.py": "board",
   "print_pdf.py": "print", "reference_page.py": "print", "sop_page.py": "print", "report_page.py": "print", "create_workbook.py": "code", "edit_workbook.py": "code" };
@@ -136,7 +143,7 @@ export const TOOLS = [
   },
   {
     name: "draw_reference",
-    description: "Write the glossary, with its classes and relationships, or the data dictionary, as an A4 page ready for print_pdf, from the rows okb_get_reference returned to a file. Both paths are full paths directly inside the agent folder, and the page is a new file there; nothing is replaced. Beside the page it writes the page's outline, <name>.outline.md, and, where a Chromium browser is found, its picture, <name>.png. Read both before printing the page. Returns the page's path and size, the counts, outline_file, picture_file and the number of findings, never the page's content.",
+    description: "Write the glossary, with its classes and relationships, or the data dictionary, as an A4 page ready for print_pdf, from the rows okb_get_reference returned to a file. Both paths are full paths directly inside the agent folder, and the page is a new file there; nothing is replaced. Beside the page it writes the page's outline, <name>.outline.md, and, where a Chromium browser is found, its picture, <name>.png. Read both before printing the page. Where the person is signed in and OKB holds the firm's Brand record in General, the page takes its palette, fonts and logo; otherwise it is plain. Returns the page's path and size, the counts, outline_file, picture_file, the number of findings and look, brand or plain, never the page's content.",
     inputSchema: {
       type: "object",
       properties: {
@@ -149,7 +156,7 @@ export const TOOLS = [
   },
   {
     name: "draw_sop",
-    description: "Write a standard operating procedure for one routine, as an A4 page ready for print_pdf, from its approved model version: its purpose, its trigger, each state with who, what, the tool and the checks, the handovers, the exceptions, the drawn state machine and the glossary terms it uses. Every path is a full path directly inside the agent folder, and the page is a new file there; nothing is replaced. Beside the page it writes the page's outline, <name>.outline.md, and, where a Chromium browser is found, its picture, <name>.png. Read both before printing the page. Returns the page's path and size, the counts, outline_file, picture_file and the number of findings, never the page's content.",
+    description: "Write a standard operating procedure for one routine, as an A4 page ready for print_pdf, from its approved model version: its purpose, its trigger, each state with who, what, the tool and the checks, the handovers, the exceptions, the drawn state machine and the glossary terms it uses. Every path is a full path directly inside the agent folder, and the page is a new file there; nothing is replaced. Beside the page it writes the page's outline, <name>.outline.md, and, where a Chromium browser is found, its picture, <name>.png. Read both before printing the page. Where the person is signed in and OKB holds the firm's Brand record in General, the page takes its palette, fonts and logo; otherwise it is plain. Returns the page's path and size, the counts, outline_file, picture_file, the number of findings and look, brand or plain, never the page's content.",
     inputSchema: {
       type: "object",
       properties: {
@@ -165,7 +172,7 @@ export const TOOLS = [
   },
   {
     name: "report_page",
-    description: "Make an executive report's page from its Markdown, as the real-agent-project plugin's report skill describes, for print_pdf to print. Headings, paragraphs, lists, tables, bold, italic, code and links become the page's own, with no Markdown mark left. A figure block of the report skill's section 6, a line starting with <, passes through up to the next blank line. The report's first '# ' heading is its title, and the four header lines are given here. The page has the plain style. Each picture the report names beside it is put inside the page, so the page is one file. Both paths are full paths directly inside the agent folder, and the page is a new file there; nothing is replaced. A picture given with a folder, missing, or not a PNG, JPEG, GIF or WebP picture is refused, and nothing is written. Returns the page's path and size, and the pictures it holds.",
+    description: "Make an executive report's page from its Markdown, as the real-agent-project plugin's report skill describes, for print_pdf to print. Headings, paragraphs, lists, tables, bold, italic, code and links become the page's own, with no Markdown mark left. A figure block of the report skill's section 6, a line starting with <, passes through up to the next blank line. The report's first '# ' heading is its title, and the four header lines are given here. Where the person is signed in and OKB holds the firm's Brand record in General, the page takes its palette, fonts and logo; otherwise it has the plain style. Each picture the report names beside it is put inside the page, so the page is one file. Both paths are full paths directly inside the agent folder, and the page is a new file there; nothing is replaced. A picture given with a folder, missing, or not a PNG, JPEG, GIF or WebP picture is refused, and nothing is written. Returns the page's path and size, the pictures it holds, and look, brand or plain.",
     inputSchema: {
       type: "object",
       properties: {
@@ -196,7 +203,7 @@ export const TOOLS = [
   },
   {
     name: "embed_pictures",
-    description: "Make a single-file copy of a page, such as a report's deck, as the print skill describes. Each picture the page's <img> elements name directly beside it is put inside the copy, so the copy shows its pictures wherever it goes. print_pdf prints the copy as it prints the page. With style deck, the copy also holds the print skill's deck.css, so a deck's page is written without it. Both paths are full paths directly inside the agent folder, and the copy is a new file there; nothing is replaced. A picture given with a folder, missing, or not a PNG, JPEG, GIF or WebP picture is refused, and nothing is written. Returns the copy's path and size, the pictures it holds, and its style.",
+    description: "Make a single-file copy of a page, such as a report's deck, as the print skill describes. Each picture the page's <img> elements name directly beside it is put inside the copy, so the copy shows its pictures wherever it goes. print_pdf prints the copy as it prints the page. With style deck, the copy also holds the print skill's deck.css, so a deck's page is written without it, and, where the person is signed in and OKB holds the firm's Brand record in General, the brand's palette, fonts and logo, on the title slide and in each slide's foot. Both paths are full paths directly inside the agent folder, and the copy is a new file there; nothing is replaced. A picture given with a folder, missing, or not a PNG, JPEG, GIF or WebP picture is refused, and nothing is written. Returns the copy's path and size, the pictures it holds, its style, and for a deck look, brand or plain.",
     inputSchema: {
       type: "object",
       properties: {
@@ -321,9 +328,17 @@ async function python(script, args) {
 }
 
 const asContent = payload => ({ content: [{ type: "text", text: JSON.stringify(payload, null, 2) }] });
+/** A page writer's answer, with its look, brand or plain, where it wrote the page. */
+const lookOf = (made, dressed) => made.ok ? { ...made, look: dressed ? "brand" : "plain" } : made;
 
 /** The tools on files directly inside `agentFolder`. Returns the tools' list and `callTool`, which answers as MCP content. */
-export function createTools({ agentFolder = null }) {
+export function createTools({ agentFolder = null, readBrand = null }) {
+  /** The firm's brand, read as the signed-in person each time a page is written, or null: with no sign-in, no Brand
+   * record, no grant to read General or a refusal, the page is plain. */
+  const brand = () => readBrand ? Promise.resolve().then(readBrand).catch(() => null) : Promise.resolve(null);
+  /** The brand's style for one kind of page, after the page's own, and its logo, as the print skill's scripts take them. */
+  const dressing = (dressed, kind) => dressed ? { style: printStyle(dressed, readFileSync(join(STYLES, kind), "utf-8")), logo: logoHtml(dressed, "brand-logo") } : null;
+
   /** A full path naming a file directly inside the agent folder, and not a hidden one. */
   function place(file) {
     if (!agentFolder) return { ok: false, problem: NO_FOLDER };
@@ -396,9 +411,10 @@ export function createTools({ agentFolder = null }) {
    * JSON value given as `data` is written to the scratch folder too, and passed after the output.
    * Each of `beside`, `{ name, body }`, is written beside the output under its own name, as a picture
    * the page names is beside it in the agent folder. `finish`, given the output's bytes, returns
-   * `{ ok, body }` to write in their place, or a refusal, and nothing is written.
+   * `{ ok, body }` to write in their place, or a refusal, and nothing is written. `dressed`, the brand's style and logo,
+   * is written to the scratch folder and passed as --brand.
    */
-  async function convert(script, inputFiles, outputFile, extra = [], data, beside = [], finish) {
+  async function convert(script, inputFiles, outputFile, extra = [], data, beside = [], finish, dressed = null) {
     const inputs = [].concat(inputFiles);
     if (inputs.length === 0) return { ok: false, problem: "Name at least one input file." };
     const output = freeInside(outputFile);
@@ -428,6 +444,11 @@ export function createTools({ agentFolder = null }) {
         const dataFile = join(scratch, "data.json");
         writeFileSync(dataFile, JSON.stringify(data), { mode: 0o600 });
         extra = [dataFile, ...extra];
+      }
+      if (dressed) {
+        const brandFile = join(scratch, "brand.json");
+        writeFileSync(brandFile, JSON.stringify(dressed), { mode: 0o600 });
+        extra = [...extra, `--brand=${brandFile}`];
       }
       // Scratch paths are given back as the agent folder's own paths.
       const named = text => sources.reduce((out, source, at) => out.replaceAll(source, inputs[at]), text.replaceAll(target, outputFile));
@@ -490,8 +511,9 @@ export function createTools({ agentFolder = null }) {
     return { ok: true, body: Buffer.from(page), pictures: [...pictures].sort() };
   }
 
-  /** Writes a new page from one in the agent folder, holding each picture it names beside it. */
-  function embedInPage(pageFile, newFile, style) {
+  /** Writes a new page from one in the agent folder, holding each picture it names beside it. A deck takes deck.css, and
+   * the firm's brand where there is one. */
+  async function embedInPage(pageFile, newFile, style) {
     if (!/\.html?$/i.test(String(pageFile ?? ""))) return { ok: false, problem: "page_file must end in .html." };
     if (style !== undefined && style !== "deck") return { ok: false, problem: "style must be deck, or left out." };
     if (!/\.html$/i.test(String(newFile ?? ""))) return { ok: false, problem: "new_file must end in .html." };
@@ -499,19 +521,29 @@ export function createTools({ agentFolder = null }) {
     if (!page.ok) return page;
     const free = freeInside(newFile);
     if (!free.ok) return free;
-    let html = page.body.toString("utf-8");
+    let html = page.body.toString("utf-8"), look;
     if (style === "deck") {
-      // The deck's style goes first in the head, so the page's own style can change it.
+      // The deck's style, then the brand's, go first in the head, so the page's own style can change them.
       const head = html.match(/<head\b[^>]*>/i);
       if (!head) return { ok: false, problem: "Nothing was written: the page has no <head> to put deck.css in." };
-      const css = readFileSync(join(SKILLS, "print", "deck.css"), "utf-8");
-      html = html.slice(0, head.index + head[0].length) + `\n<style>\n${css}</style>` + html.slice(head.index + head[0].length);
+      const css = readFileSync(join(SKILLS, "print", "deck.css"), "utf-8"), dressed = dressing(await brand(), "deck-brand.css");
+      const own = dressed ? `\n<style>\n${dressed.style}</style>` : "";
+      html = html.slice(0, head.index + head[0].length) + `\n<style>\n${css}</style>${own}` + html.slice(head.index + head[0].length);
+      if (dressed?.logo) {
+        // The brand's logo above the title slide's headline, and at the start of each slide's foot. A tag takes it where
+        // its class holds each of the names given, in any order.
+        const classed = names => tag => { const cls = (/\bclass\s*=\s*["']([^"']*)["']/i.exec(tag)?.[1] ?? "").split(/\s+/); return names.every(n => cls.includes(n)); };
+        const title = classed(["slide", "title"]), band = classed(["band"]);
+        html = html.replace(/<section\b[^>]*>/gi, tag => title(tag) ? `${tag}\n${dressed.logo}` : tag)
+          .replace(/<footer\b[^>]*>/gi, tag => band(tag) ? `${tag}${dressed.logo}` : tag);
+      }
+      look = dressed ? "brand" : "plain";
     }
     const embedded = embedPictures(html, pageFile);
     if (!embedded.ok) return embedded;
     const written = writeInside(newFile, embedded.body);
     if (!written.ok) return written;
-    return { ok: true, file: written.file, bytes: written.bytes, pictures: embedded.pictures, ...(style ? { style } : {}), agentFolder, agentFolderPath: realpathSync.native(agentFolder) };
+    return { ok: true, file: written.file, bytes: written.bytes, pictures: embedded.pictures, ...(style ? { style, look } : {}), agentFolder, agentFolderPath: realpathSync.native(agentFolder) };
   }
 
   /**
@@ -640,7 +672,10 @@ export function createTools({ agentFolder = null }) {
         const extra = args.description === undefined ? [] : [`--description=${String(args.description)}`];
         return asContent(await convert("page_to_model.py", args.page_file, args.payload_file, extra));
       }
-      if (name === "draw_reference") return asContent(await convert("reference_page.py", args.reference_file, args.page_file));
+      if (name === "draw_reference") {
+        const dressed = dressing(await brand(), "page-brand.css");
+        return asContent(lookOf(await convert("reference_page.py", args.reference_file, args.page_file, [], undefined, [], undefined, dressed), dressed));
+      }
       if (name === "draw_sop") {
         const picture = place(args.picture_file);
         if (!picture.ok) return asContent(picture);
@@ -648,7 +683,8 @@ export function createTools({ agentFolder = null }) {
         const read = readInside(args.picture_file);
         if (!read.ok) return asContent(read);
         const extra = [`--picture=${basename(picture.path)}`, ...(args.version_id === undefined ? [] : [`--version-id=${String(args.version_id)}`])];
-        return asContent(await convert("sop_page.py", [args.record_file, args.glossary_file], args.page_file, extra, undefined, [{ name: basename(picture.path), body: read.body }]));
+        const dressed = dressing(await brand(), "page-brand.css");
+        return asContent(lookOf(await convert("sop_page.py", [args.record_file, args.glossary_file], args.page_file, extra, undefined, [{ name: basename(picture.path), body: read.body }], undefined, dressed), dressed));
       }
       if (name === "report_page") {
         if (!/\.md$/i.test(String(args.markdown_file ?? ""))) return asContent({ ok: false, problem: "markdown_file must end in .md." });
@@ -656,15 +692,16 @@ export function createTools({ agentFolder = null }) {
         for (const key of ["prepared_for", "prepared_by", "read_at", "project_owner"])
           if (!String(args[key] ?? "").trim()) return asContent({ ok: false, problem: `${key} is needed for the report's header.` });
         let pictures = [];
+        const dressed = dressing(await brand(), "report-brand.css");
         const made = await convert("report_page.py", args.markdown_file, args.page_file, [`--for=${args.prepared_for}`, `--by=${args.prepared_by}`,
           `--read-at=${args.read_at}`, `--owner=${args.project_owner}`], undefined, [],
-          body => { const embedded = embedPictures(body.toString("utf-8"), args.page_file); pictures = embedded.pictures ?? []; return embedded; });
+          body => { const embedded = embedPictures(body.toString("utf-8"), args.page_file); pictures = embedded.pictures ?? []; return embedded; }, dressed);
         if (!made.ok) return asContent({ ...made, problem: made.problem.replace(/^report_page\.py failed: /, "Nothing was written: ") });
         const { output, ...rest } = made;
-        return asContent({ ...rest, pictures });
+        return asContent({ ...rest, pictures, look: dressed ? "brand" : "plain" });
       }
       if (name === "print_pdf") return asContent(await printPdf(args.page_file, args.pdf_file, args.size ?? "A4"));
-      if (name === "embed_pictures") return asContent(embedInPage(args.page_file, args.new_file, args.style));
+      if (name === "embed_pictures") return asContent(await embedInPage(args.page_file, args.new_file, args.style));
       if (name === "check_text") return asContent(checkText(args.text_file));
       if (name === "create_workbook") {
         if (!Array.isArray(args.sheets) || args.sheets.length === 0) return asContent({ ok: false, problem: "sheets must be a list of at least one sheet." });

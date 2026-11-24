@@ -1,5 +1,5 @@
--- OKB setup: where this project stands, read before setup builds anything. Reads only, as postgres, through the
--- Supabase connector's execute_sql. One row:
+-- OKB setup: where this project stands, read before setup builds anything. Reads only, as postgres, through
+-- Supabase's Management API. One row:
 --   okb_built       the okb schema is there;
 --   setup_finished  general, routines, reference and plugins are all there, each enabled;
 --   actors          OKB's actors;

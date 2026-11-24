@@ -4,10 +4,13 @@
 // plugin's MCP server runs, as the person signed in with sign-in.
 //
 //   node okb.mjs setup --folder <folder> --email <email> [--url <project URL> --key <publishable key>] [--agent <plugin>:<agent>] [--new-password]
+//   node okb.mjs setup --owner --folder <folder>
+//   node okb.mjs setup --owner [--folder <folder>] --folder-only
 //   node okb.mjs sign-in [--new-password] [--url <project URL> --key <publishable key>] [--folder <folder> --email <email>]
 //   node okb.mjs sign-in --owner --url <project URL> --key <publishable key> --folder <setup folder>
 //   node okb.mjs sign-in --join --url <project URL> --key <publishable key> [--email <email>] [--folder <folder>]
 //   node okb.mjs sync [--project <ref> --email <email>] [--into <local folder>]
+//   node okb.mjs connector-settings --url <project URL> --slug <slug>
 //   node okb.mjs uninstall [--yes] [--remove-work]
 //   node okb.mjs [--project <ref> --email <email>] <name> [<argument>=<value> ...]
 //
@@ -15,7 +18,8 @@
 // .okb-actor.json, signs in again as the file's person, with the project's address and key saved at
 // the first sign-in. sync installs the newest release of the firm's plugins from OKB's Plugins
 // scope, as sync.mjs describes. uninstall takes Real Agent's install off the computer and keeps the person's
-// folders, as uninstall.mjs describes. --folder signs in as --email and writes that folder's actor file, so a session
+// folders, as uninstall.mjs describes. connector-settings makes the five settings Real Agent's connector needs in the
+// project, with a Supabase access token typed at its own hidden prompt, as connector-settings.mjs describes. --folder signs in as --email and writes that folder's actor file, so a session
 // opened on it works as that person. The first sign-in asks for the project's address and
 // publishable key, unless --url and --key give them.
 // SUPABASE_PROJECT_REF and SUPABASE_AUTH_EMAIL, set together, stand in for --project and --email.
@@ -38,30 +42,39 @@ import { readActor } from "../mcp/lib/actor-file.mjs";
 import { setup, SETUP_USAGE } from "./setup.mjs";
 import { runSync, SYNC_USAGE } from "./sync.mjs";
 import { uninstall, UNINSTALL_USAGE } from "./uninstall.mjs";
+import { connectorSettings, CONNECTOR_SETTINGS_USAGE } from "./connector-settings.mjs";
 
 export const USAGE = `Usage: node okb.mjs setup [--folder <folder>] --email <email> [--url <project URL> --key <publishable key>] [--agent <plugin>:<agent>] [--new-password | --join]
-       node okb.mjs setup --owner [--folder <folder>]
-       node okb.mjs sign-in [--new-password] [--url <project URL> --key <publishable key>] [--folder <folder> --email <email>]
+       node okb.mjs setup --owner --folder <folder>
+       node okb.mjs setup --owner [--folder <folder>] --folder-only
+       node okb.mjs sign-in [--new-password] [--second-factor] [--url <project URL> --key <publishable key>] [--folder <folder> --email <email>]
        node okb.mjs sign-in --owner --url <project URL> --key <publishable key> --folder <setup folder>
        node okb.mjs sign-in --join --url <project URL> --key <publishable key> [--email <email>] [--folder <folder>]
        node okb.mjs sync [--project <ref> --email <email>] [--into <local folder>]
+       node okb.mjs connector-settings --url <project URL> --slug <slug>
        node okb.mjs uninstall [--yes] [--remove-work]
        node okb.mjs [--project <ref> --email <email>] <name> [<argument>=<value> ...]
 
 setup sets up a folder for one person in their firm's OKB: the folder, ~/real-agent unless --folder
 names another, where the person puts files for their agent and the agent keeps its work, the agent
-the folder works with, its plugin, and the person's sign-in. With --owner, before the firm has a project, it sets up the owner's folder for the
-business analyst, with no sign-in. node okb.mjs setup --help says more.
+the folder works with, its plugin, and the person's sign-in. With --owner, it sets up the owner's folder for the
+business analyst, and sets Real Agent up for the firm in one run, through Supabase's Management API, with a Supabase
+access token typed at a hidden prompt. --folder-only makes the folder alone. node okb.mjs setup --help says more.
 
 sign-in signs you in to your firm's OKB and asks for your password. In a folder you signed in with
 before, it signs you in again as that folder's person. --folder signs you in as --email, and saves the
 folder's actor file: a session opened on that folder works as that email. The first sign-in asks for the project's address and publishable key, unless --url
 and --key give them. --owner is the firm's owner's first sign-in, at the end of setup: it asks your name, your
 email and the password you choose, and makes your sign-in with the code setup left in the folder. --join is your first
-sign-in with the invitation code your administrator gave you: it asks the code and a password you choose.
+sign-in with the invitation code your administrator gave you: it asks the code and a password you choose. With an
+authenticator app on your account, sign-in asks for its six-digit code after your password. --second-factor adds an
+authenticator app: it prints the secret and the otpauth:// address to add to the app, and asks for a code from it.
 
 sync installs the newest release of your firm's plugins from the Plugins scope of your firm's OKB,
 signed in as you, and updates each plugin installed from it. node okb.mjs sync --help says more.
+
+connector-settings makes the five settings Real Agent's connector needs in your firm's Supabase project. It asks
+for a Supabase access token at a hidden prompt, and uses it once. node okb.mjs connector-settings --help says more.
 
 uninstall takes Real Agent's install off this computer, signs you out and keeps your folders. It lists
 each item first, and asks you to type yes. node okb.mjs uninstall --help says more.
@@ -233,13 +246,17 @@ if (process.argv[1] && real(fileURLToPath(import.meta.url)) === real(resolve(pro
     const words = process.argv.slice(3);
     if (words.includes("--help") || words.includes("-h")) { process.stdout.write(`${SETUP_USAGE}\n`); process.exit(0); }
     // OKB_SETUP_SIGN_IN and OKB_SETUP_SYNC name a stand-in sign-in and sync, for setup.test.mjs.
-    process.exit(setup(words, { signInArgs, signInPath: process.env.OKB_SETUP_SIGN_IN || SIGN_IN,
+    process.exit(await setup(words, { signInArgs, signInPath: process.env.OKB_SETUP_SIGN_IN || SIGN_IN,
       ...(process.env.OKB_SETUP_SYNC ? { syncArgs: [process.env.OKB_SETUP_SYNC] } : {}) }));
   }
   if (process.argv[2] === "uninstall") {
     const words = process.argv.slice(3);
     if (words.includes("--help") || words.includes("-h")) { process.stdout.write(`${UNINSTALL_USAGE}\n`); process.exit(0); }
     process.exitCode = await uninstall(words);
+  } else if (process.argv[2] === "connector-settings") {
+    const words = process.argv.slice(3);
+    if (words.includes("--help") || words.includes("-h")) { process.stdout.write(`${CONNECTOR_SETTINGS_USAGE}\n`); process.exit(0); }
+    process.exitCode = await connectorSettings(words);
   } else if (process.argv[2] === "sync") {
     const words = process.argv.slice(3);
     if (words.includes("--help") || words.includes("-h")) { process.stdout.write(`${SYNC_USAGE}\n`); process.exit(0); }

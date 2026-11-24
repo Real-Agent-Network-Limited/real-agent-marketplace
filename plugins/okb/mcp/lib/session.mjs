@@ -83,8 +83,9 @@ export function writeSession(ref, email, session) {
   return target;
 }
 
-/** Supabase's own sentence, a hosted function's problem, or the status when it gave none. With keepBody, a
- * refusal also carries its parsed reply whole, as body. */
+/** Supabase's own sentence, a hosted function's problem, or the status when it gave none. A database error's
+ * details, such as the key a duplicate breaks, come as details, parsed where they are JSON.
+ * With keepBody, a refusal also carries its parsed reply whole, as body. */
 async function answer(response, { keepBody = false } = {}) {
   const text = await response.text();
   let body = null;
@@ -92,6 +93,9 @@ async function answer(response, { keepBody = false } = {}) {
   if (response.ok) return { ok: true, body };
   const said = body?.msg ?? body?.message ?? body?.error_description ?? body?.error ?? body?.problem;
   const failed = { ok: false, status: response.status, code: body?.error_code ?? body?.code, problem: typeof said === "string" ? said : `HTTP ${response.status}` };
+  if (typeof body?.details === "string" && body.details !== "") {
+    try { failed.details = JSON.parse(body.details); } catch { failed.details = body.details; }
+  }
   return keepBody && body !== null ? { ...failed, body } : failed;
 }
 
@@ -107,6 +111,93 @@ export async function passwordSignIn(url, key, email, password) {
 
 export async function refreshSession(url, key, refreshToken) {
   return answer(await fetch(`${url}/auth/v1/token?grant_type=refresh_token`, { method: "POST", headers: headers(key), body: JSON.stringify({ refresh_token: refreshToken }) }));
+}
+
+/** The account's authenticator apps that are verified, from Supabase Auth's user. */
+export const verifiedFactors = user => (Array.isArray(user?.factors) ? user.factors : []).filter(f => f?.factor_type === "totp" && f?.status === "verified");
+
+/** The level of a sign-in, from its access token's aal claim: aal2 once it gave a code from an authenticator app, aal1 before. */
+export function signInLevel(accessToken) {
+  try { return JSON.parse(Buffer.from(String(accessToken).split(".")[1], "base64url").toString("utf-8")).aal === "aal2" ? "aal2" : "aal1"; }
+  catch { return "aal1"; }
+}
+
+/** Starts an authenticator app on the signed-in account, with friendlyName as the name the app shows: without an issuer, Supabase gives the project's Site URL. Its answer holds the factor's id, and totp's secret and otpauth:// address. */
+export async function enrolFactor(url, key, accessToken, friendlyName) {
+  return answer(await fetch(`${url}/auth/v1/factors`, { method: "POST", headers: headers(key, accessToken), body: JSON.stringify({ factor_type: "totp", friendly_name: friendlyName, issuer: friendlyName }) }));
+}
+
+/** Removes one of the account's factors. */
+export async function removeFactor(url, key, accessToken, factorId) {
+  return answer(await fetch(`${url}/auth/v1/factors/${encodeURIComponent(factorId)}`, { method: "DELETE", headers: headers(key, accessToken) }));
+}
+
+/** Checks a six-digit code against one factor: a challenge, then its verification. Its answer is a new session, at aal2. */
+export async function verifyFactor(url, key, accessToken, factorId, code) {
+  const challenge = await answer(await fetch(`${url}/auth/v1/factors/${encodeURIComponent(factorId)}/challenge`, { method: "POST", headers: headers(key, accessToken), body: "{}" }));
+  if (!challenge.ok) return challenge;
+  return answer(await fetch(`${url}/auth/v1/factors/${encodeURIComponent(factorId)}/verify`, { method: "POST", headers: headers(key, accessToken), body: JSON.stringify({ challenge_id: challenge.body.id, code }) }));
+}
+
+/** A saved access token is used while more than this is left of it. */
+const ACCESS_MARGIN = 60_000;
+/** A lock older than this was left by a process that stopped, and is removed. */
+const LOCK_STALE = 30_000;
+const LOCK_WAIT = 10_000;
+export const RATE_LIMITED = "Supabase is limiting sign-in renewals from this computer. Try again in a minute; the sign-in is still saved.";
+
+const fresh = saved => typeof saved?.accessToken === "string" && saved.accessToken !== "" && Number(saved.expiresAt) - ACCESS_MARGIN > Date.now();
+const fromSaved = saved => ({ ok: true, url: saved.url, key: saved.publishableKey, token: saved.accessToken, expiresAt: Number(saved.expiresAt) });
+
+/** Takes `<email>.json.lock` beside the session file, made with "wx" so one process holds it. Returns its release, or null after LOCK_WAIT. */
+async function takeLock(ref, email) {
+  const path = `${sessionPath(ref, email)}.lock`;
+  const until = Date.now() + LOCK_WAIT;
+  for (let pause = 100; ; pause = Math.min(pause * 1.5, 1000)) {
+    try {
+      const fd = openSync(path, "wx", 0o600);
+      writeFileSync(fd, String(process.pid));
+      closeSync(fd);
+      return () => rmSync(path, { force: true });
+    } catch (err) {
+      if (err?.code !== "EEXIST") throw err;
+    }
+    try { if (Date.now() - lstatSync(path).mtimeMs > LOCK_STALE) { rmSync(path, { force: true }); continue; } }
+    catch { continue; }
+    if (Date.now() + pause > until) return null;
+    await new Promise(done => setTimeout(done, pause));
+  }
+}
+
+/**
+ * A current access token for the saved sign-in: { ok: true, url, key, token, expiresAt } or { ok: false, problem }.
+ * The access token is saved beside the refresh token and used until a minute before it expires. Each refresh token is
+ * good once, and Supabase ends the whole sign-in when one is used again, so one process renews at a time, under a lock,
+ * and reads the file again inside it. A refusal for Supabase's rate limit carries rateLimited, and leaves the file as it
+ * was. A renewal for another user than email carries wrongUser, and saves nothing.
+ */
+export async function sessionAccess(ref, email) {
+  const before = readSession(ref, email);
+  if (!before) return { ok: false, problem: `No session is saved for ${email} on project ${ref}.`, missing: true };
+  if (fresh(before)) return fromSaved(before);
+  const release = await takeLock(ref, email);
+  if (!release) return { ok: false, problem: `Another program held the sign-in for ${email} for ${LOCK_WAIT / 1000} seconds. Try again in a minute; the sign-in is still saved.` };
+  try {
+    const saved = readSession(ref, email);
+    if (!saved) return { ok: false, problem: `No session is saved for ${email} on project ${ref}.`, missing: true };
+    if (fresh(saved)) return fromSaved(saved);
+    const renewed = await refreshSession(saved.url, saved.publishableKey, saved.refreshToken);
+    if (!renewed.ok && renewed.status === 429) return { ok: false, problem: RATE_LIMITED, rateLimited: true };
+    if (!renewed.ok) return { ok: false, problem: renewed.problem, status: renewed.status };
+    const user = renewed.body.user?.email;
+    if (accountEmail(user) !== email) return { ok: false, problem: `The saved session is for ${user}, not ${email}.`, wrongUser: user };
+    const expiresAt = renewed.body.expires_at ? renewed.body.expires_at * 1000 : Date.now() + renewed.body.expires_in * 1000;
+    const { version: _version, ...kept } = saved;
+    writeSession(ref, email, { ...kept, refreshToken: renewed.body.refresh_token, accessToken: renewed.body.access_token, expiresAt });
+    return { ok: true, url: saved.url, key: saved.publishableKey, token: renewed.body.access_token, expiresAt };
+  } finally {
+    release();
+  }
 }
 
 export async function setPassword(url, key, accessToken, password) {

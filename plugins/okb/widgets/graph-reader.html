@@ -1,0 +1,76 @@
+<style>
+.gr { display: grid; gap: 10px; padding: 6px 0 12px; font-size: 14px; line-height: 1.45; color: var(--brand-ink); }
+.gr * { box-sizing: border-box; }
+.gr h2 { margin: 0; font-size: 16px; }
+.gr p { margin: 0; overflow-wrap: anywhere; }
+.gr-sub { color: var(--brand-muted); font-size: 13px; }
+.gr-refused { color: var(--color-text-danger, #b42318); }
+.gr-form { display: grid; gap: 10px; }
+.gr-form label { display: grid; gap: 2px; font-size: 13px; color: var(--brand-muted); }
+.gr-form input { font: inherit; color: inherit; padding: 4px 8px; border: 1px solid var(--brand-rule); border-radius: 0; background: transparent; min-width: 0; }
+.gr-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.gr-btn { font: inherit; color: inherit; padding: 3px 12px; border: 1px solid var(--brand-rule); border-radius: 0; background: transparent; cursor: pointer; }
+.gr-btn.main { background: var(--brand-accent); color: var(--brand-on-accent); border-color: var(--brand-accent); }
+.gr-btn:disabled { opacity: .5; cursor: default; }
+.gr-btn[hidden] { display: none; }
+</style>
+<section class="gr" data-brand-logo>
+  <h2>Graph reader</h2>
+  <p class="gr-sub">OKB reads who and what your files name, and how they're linked, so a search can follow those links. Anthropic charges your firm's API key for each part it reads. Type the key here, not in the chat.</p>
+  <p id="gr-state">Checking…</p>
+  <form class="gr-form" id="gr-form" autocomplete="off" hidden>
+    <label>Anthropic API key: in the Claude Console at platform.claude.com, start a new API key and choose Somewhere else. It starts sk-ant-
+      <input id="gr-key" type="password" autocomplete="new-password" autocapitalize="off" spellcheck="false" required></label>
+    <div class="gr-buttons">
+      <button class="gr-btn main" id="gr-save" type="submit">Save</button>
+      <button class="gr-btn" id="gr-off" type="button" hidden>Turn off</button>
+    </div>
+  </form>
+  <p id="gr-said" aria-live="polite"></p>
+</section>
+<script>
+// The graph reader card: it shows whether the graph reader is on, in the words show_graph_reader's result gives. Save
+// calls graph_reader_save with the key typed here, which OKB keeps only once Anthropic takes it, and the card then shows
+// connected or the reason. Turn off calls graph_reader_off, which removes the key. When Anthropic didn't answer, the card
+// says why and offers both. Both send the pass show_graph_reader gave the card in its result's _meta, which the model
+// never sees. The shell gives it callTool and onNotice.
+var SAID = {}, PASS = "", begun = false;
+function $(id) { return document.getElementById(id); }
+function textOf(r) { return ((r && r.content) || []).map(function (c) { return c.text || ""; }).join(" "); }
+function showState(state, problem) {
+  $("gr-state").textContent = (SAID[state] || "") + (problem ? " " + problem : "");
+  $("gr-off").hidden = state === "off";
+  $("gr-save").textContent = state === "off" ? "Save" : "Save a new key";
+}
+function say(text, refused) { var p = $("gr-said"); p.className = refused ? "gr-refused" : ""; p.textContent = text; }
+function busy(on) { $("gr-save").disabled = on; $("gr-off").disabled = on; }
+
+$("gr-form").addEventListener("submit", function (e) {
+  e.preventDefault();
+  busy(true);
+  say("Checking the key with Anthropic…", false);
+  callTool("graph_reader_save", { key: $("gr-key").value, pass: PASS }, "save").then(function (r) {
+    if (r && !r.isError) { $("gr-key").value = ""; showState("on"); say("Connected. Tell Claude the graph reader is on.", false); }
+    else say("Not kept: " + (textOf(r) || "Real Agent's connector gave nothing back."), true);
+  }, function (e) { say("Not kept: " + (e && e.message || e), true); }).then(function () { busy(false); });
+});
+$("gr-off").addEventListener("click", function () {
+  busy(true);
+  callTool("graph_reader_off", { pass: PASS }, "off").then(function (r) {
+    if (r && !r.isError) { showState("off"); say("The graph reader is off. The graph OKB already keeps stays.", false); }
+    else say("Not turned off: " + (textOf(r) || "Real Agent's connector gave nothing back."), true);
+  }, function (e) { say("Not turned off: " + (e && e.message || e), true); }).then(function () { busy(false); });
+});
+onNotice["ui/notifications/tool-result"] = function (p) {
+  if (begun) return;
+  begun = true;
+  if (p.isError) { $("gr-state").textContent = textOf(p); $("gr-state").className = "gr-refused"; return; }
+  var given = p.structuredContent || {};
+  SAID = given.said || {};
+  PASS = (p._meta && p._meta.pass) || "";
+  // Claude gives the card its pass with the tool's result. Without one, Save and Turn off could only be refused.
+  if (!PASS) { $("gr-state").textContent = "Claude gave this card no pass, so it can't save or turn off the graph reader. Ask Claude to show the graph reader card again."; $("gr-state").className = "gr-refused"; return; }
+  $("gr-form").hidden = false;
+  showState(given.state, given.problem);
+};
+</script>

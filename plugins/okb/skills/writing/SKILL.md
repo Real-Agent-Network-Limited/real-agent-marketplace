@@ -46,7 +46,7 @@ A reply is precise and concise. It holds what the person needs to act or decide,
 - A reply that needs the person's answer, agreement or action holds one such issue, and stops. The next issue comes after their reply.
 - A reply that needs nothing from the person is a summary. It gives one line per item, or one table row per record, all in one reply.
 - A list of records gives one row per record, with only the fields that let the person prioritise, soonest first. A row holds no sentence.
-- A question with a yes or no answer gets the answer as its first word, in one line, such as "Yes, the valuation at 1 Example Road is completed." Add a second line only for something the person must do.
+- A question with a yes or no answer gets the answer as its first word, in one line, such as "Yes, the delivery to 1 Example Road is completed." Add a second line only for something the person must do.
 - A quoted message, and a draft shown for approval, go in a block quote. A command goes in fenced code.
 
 ## Say what is true
@@ -163,7 +163,7 @@ The rules above cut words. Each sentence still answers three questions aloud: wh
 
   | Written | Correct |
   |---|---|
-  | Describe the problem as it costs the business. | Describe the problem in terms of what it is costing the business. |
+  | Describe the problem as it costs the firm. | Describe the problem in terms of what it is costing the firm. |
   | Then check the dates follow the links. | Then check that no task is due to finish before the tasks it waits on. |
 
 - **Whose example:** say whose case an example is: "In this project", "For the project owner". `check_text` checks "Here" used for it three times in one text.

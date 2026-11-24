@@ -16,10 +16,12 @@ The scripts beside this skill do the work, with Python 3.
 
 - `reference_page.py` writes the glossary or the data dictionary page, for `draw_reference`.
 - `sop_page.py` writes the SOP page, for `draw_sop`.
-- `a4.py` holds the A4 page style both pages use.
+- `a4.py` holds the A4 page style both pages use, and puts the firm's brand in.
 - `print_pdf.py` prints a page to a PDF, for `print_pdf`. It finds the browser as the `okb:board` skill's `page_check.py` does. `pdf_text.py` reads the printed PDF's text, for its Markdown findings.
 - `report_page.py` makes an executive report's page from its Markdown, for `report_page`, with `md_page.py` and the style in `report.css`. `report.css` also styles the report's graphics: the status strip, the flow, the timeline and the red and amber markers.
 - `deck.css` is a deck's style: the slide frame, and the report's graphics at slide size. `embed_pictures` with `style` `deck` puts it in the deck's page, so the agent writes the page without it.
+
+A page and a deck take the firm's brand, where OKB holds it, as "The firm's brand" below says.
 
 `print_pdf`:
 
@@ -36,6 +38,22 @@ The scripts beside this skill do the work, with Python 3.
 A page holds its pictures with the okb plugin's `embed_pictures` tool. It writes a new page with each picture beside the page inside it. The new page is one file, and shows its pictures wherever it is opened. `report_page` puts a report's pictures inside its page itself. `print_pdf` prints a page with its pictures inside it, and lists each by its file's name.
 
 The agent, such as the database operator, `@real-agent:database-operator`, runs the scripts through the okb plugin's tools. Each tool writes new files directly inside the agent folder, and never replaces a file. The tools need Python 3, as the `okb:graph` skill sets out.
+
+## The firm's brand
+
+The firm's brand is its logo, colours and fonts. OKB keeps it as one `model` record in General, titled `Brand`, with `model_kind` `observed_current`. `draw_reference`, `draw_sop`, `report_page` and `embed_pictures` with `style` `deck` read it each time, as the signed-in person. A new version of the record changes the next page. With no `Brand` record, no grant to read models in General, or no one signed in, the page is plain. Each tool's answer gives `look`: `brand` or `plain`.
+
+A page takes the brand's light palette, its fonts and its logo above the title. A deck takes the same, with the logo on the title slide and at the start of each slide's foot.
+
+The okb plugin's `styles/` folder holds the stylesheets. `tokens.css` names each colour and typeface once, as a custom property starting `--brand-`, with Real Agent's own values. `page-brand.css`, `report-brand.css` and `deck-brand.css` style a page, a report and a deck from those properties alone. `card-brand.css` styles the cards of Real Agent's connector. The tools set the properties from the brand record, after the page's own style, so the templates hold neutral values.
+
+The record's `graph` holds one node, `id` `brand`, `type` `brand`, `label` the firm's name. Its `attributes` hold:
+
+- `palette`: `light` and `dark`, each with `ink`, the text; `paper`, the page; `muted`, secondary text; `rule`, borders; `accent`, the logo's own colour; and `accent_text`, the accent deepened until it reads on `paper` at 4.5 to 1. Each is `#` and six hex digits.
+- `fonts`: `heading` and `body`, each with `family`, `source`, `google` or `system`, and `fallback`, such as `Georgia, serif`.
+- `logo`: `bucket` `general`, `path`, the logo's file in General, `alt`, the firm's name, and `data_address`, a PNG, JPEG, GIF or WebP copy at most 200 pixels across, as `data:image/png;base64,...`.
+
+The record is saved as any other, with the `okb:records` skill, once the person approves it. A value that is not a colour, a font's name or a picture's data address is left out.
 
 ## Choose the mode
 
@@ -124,7 +142,7 @@ Refusals from `draw_sop`:
 
 - **Responsible:** the agent, for the person who asked.
 
-1. **Agree the file names:** the page, such as `valuation-routine-report.html`, and the PDF, such as `valuation-routine-report.pdf`. Each is a new file directly inside the agent folder. When a name is taken, add the next number to it.
+1. **Agree the file names:** the page, such as `order-routine-report.html`, and the PDF, such as `order-routine-report.pdf`. Each is a new file directly inside the agent folder. When a name is taken, add the next number to it.
    - **Person:** names the page and the PDF.
    - **Agent:** proposes both names, and waits for the person's agreement.
 2. **Write the page** from the page below. Put the document's text in `<main>`. Keep the wording of a document the person already has, such as a Markdown file, word for word. Give each picture by its file name alone, such as `<img src="booking-and-preparation-v2.png" alt="…">`. Each picture is a file directly inside the agent folder. A drawn page is shown by its picture, `<name>.png`, which the drawing tools write.
@@ -175,12 +193,12 @@ Start each page from this one. Change the title, and the text in `<main>`.
 <body>
 <main>
   <h1>Booking and preparation: report</h1>
-  <p><strong>To:</strong> the branch manager<br><strong>From:</strong> the negotiator</p>
+  <p><strong>To:</strong> the operations manager<br><strong>From:</strong> the account manager</p>
   <h2>1. Purpose</h2>
   <p>…</p>
   <figure>
-    <img src="booking-and-preparation-v2.png" alt="Current state: booking and preparing a market appraisal">
-    <figcaption>Figure 1: Current state: booking and preparing a market appraisal</figcaption>
+    <img src="booking-and-preparation-v2.png" alt="Current state: taking and preparing an order">
+    <figcaption>Figure 1: Current state: taking and preparing an order</figcaption>
   </figure>
 </main>
 </body>

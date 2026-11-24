@@ -148,8 +148,16 @@ A person can check the session without the agent:
   `--url <project URL> --key <publishable key>` gives the project's address and key on the command
   line. In a folder not yet signed in, the person runs `okb sign-in --folder <folder> --email <email>`,
   as section 1 describes.
+
+  With an authenticator app on the account, the sign-in asks `Code:` after the password. The person
+  types the six-digit code the app shows. A refused code is asked for again.
+
+  `--second-factor` adds an authenticator app to the account. The sign-in prints a secret and an
+  address that starts `otpauth://`. The person adds the secret to the app, then types the app's code.
+  Adding an app ends the account's other sessions, and each of the person's other folders is signed
+  in again.
 - **Agent:** calls `whoami`. If it responds with a sign-in command, gives the person that command
-  exactly, and waits until they say it is done.
+  exactly, and waits until they say it is done. `whoami`'s `secondFactor` is true for a sign-in that gave a code.
 - **Evidence:** the command's "Signed in as" line, and the agent's `whoami` result.
 
 ## 3. Tools
@@ -161,7 +169,7 @@ own. The actor's permissions, and the person's yes before each upload, decide wh
 | Tool | What it does |
 |---|---|
 | `whoami` | the signed-in Auth user's id and email address, the project's reference, the agent folder, the newest 50 files directly inside it, newest first, as `agentFiles`, with how many there are as `agentFileCount`, and the schema `rpc` uses when a call names none, `okb` |
-| `rpc` | calls a database function, with named arguments. `file_args` places JSON from files directly in the agent folder into the arguments, and `result_file` writes the result to a new file there, replying with a summary of its plain values. A reply of `refused` true is a refusal, given with its `problem` sentence, as a refusal the function raises is, and no result file is written |
+| `rpc` | calls a database function, with named arguments. `file_args` places JSON from files directly in the agent folder into the arguments, and `result_file` writes the result to a new file there, replying with a summary of its plain values. A reply of `refused` true is a refusal, given with its `problem` sentence, as a refusal the function raises is, and no result file is written. An error's `details` come with its `problem`, such as the key a duplicate breaks |
 | `call_function` | calls one of the project's hosted functions, with a JSON body. `result_file` writes the reply to a new file directly in the agent folder, replying with a summary of its plain values, as `rpc`'s does. A refusal gives the function's own `problem` sentence, and its whole reply as `body` |
 | `upload_file` | uploads one file directly inside the agent folder into a Storage bucket. It refuses a hidden file, a link and a file in a folder within it |
 | `list_files` | lists one folder of a Storage bucket, as far as the actor may see it |
@@ -169,7 +177,7 @@ own. The actor's permissions, and the person's yes before each upload, decide wh
 | `read_file` | reads one file in the agent folder or in a folder within it, and gives the agent its content, or lists a folder there, as "Reading a file" describes |
 | `copy_to_agent_folder` | copies one file from a folder added to the session when it started into a new file directly in the agent folder, for an upload or a page tool, as "A folder added to the session" describes |
 | `check_plugins` | at the start of a session: each plugin installed from the real-agent marketplace that is behind the newest release in the Plugins scope, and what the session's folder holds, as "Connect a folder again" describes. It changes nothing |
-| `update_plugins` | runs `okb sync` as the person, only when they ask to update their plugins |
+| `update_plugins` | runs `okb sync` as the person, only when they ask to update their plugins. The plugin's `plugin-updates` hook already runs it in the background when a newer release is there, and says so; the agent runs no second one while it does |
 
 The plugin's page tools draw and print pages in the agent folder from what OKB returns. The
 `okb:board`, `okb:graph`, `okb:print`, `okb:reference` and `okb:writing` skills cover them.
@@ -256,7 +264,7 @@ session.
 
 ## Reading a file
 
-A person can give the agent a file to work from, such as a valuation report to build records from.
+A person can give the agent a file to work from, such as a price list to build records from.
 They put it in the agent folder, or in a folder within it, and the agent reads it with `read_file`.
 Given a folder, `read_file` lists its folders and files, with each file's size. The agent reads only
 files and folders inside the agent folder that are not hidden and are not links. It reads nothing
@@ -370,8 +378,12 @@ should then change it. The agent should never repeat it back.
 - **`whoami` names someone else, or another project:** the session was opened on another folder, or
   the actor file names another person. The person opens the session on their own folder, or signs
   it in again with `okb sign-in --folder <folder> --email <email>`, and starts a new session.
-- **Sign-in refuses the email or password:** the person checks both; if they still fail, the
-  project administrator resets the password, and the next sign-in adds `--new-password`.
+- **An administrator's agent gets "No enabled OKB actor for this Auth user":** the firm's second
+  factor is set to administrators, and the sign-in gave no code. The administrator adds an
+  authenticator app with `okb sign-in --second-factor`, or signs in again and types its code.
+- **Sign-in refuses the email or password:** the person checks both; if they still fail, they ask
+  an administrator for a reset code, press Reset your password on Real Agent's sign-in page, and
+  sign in again with the new password.
 - **An upload is refused as outside the agent folder:** the person moves the file directly into the
   agent folder. A file in a folder added to the session is copied in with `copy_to_agent_folder`. A
   file in an `uploads` folder an earlier setup made is moved up into the folder itself; `okb sync`

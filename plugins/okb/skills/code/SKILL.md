@@ -31,7 +31,7 @@ The agent runs code for:
 - analysis of a data set, such as totals, averages, trends or a comparison;
 - a model worked out from data, such as a forecast fitted to past sales;
 - a cleaned data set, such as one with duplicates removed and dates in one form;
-- two or more files joined into one, such as viewings matched to properties;
+- two or more files joined into one, such as deliveries matched to orders;
 - a chart drawn from data.
 
 A live model the person changes, with inputs and formulas, is a workbook, as "Live workbook models" below says. Code works out the figures a live model starts from.

@@ -31,12 +31,12 @@ begin
  perform pg_notify('pgrst', 'reload config');
 
  if to_regnamespace('cron') is not null and exists(select 1 from pg_proc where proname = 'unschedule' and pronamespace = 'cron'::regnamespace) then
-  for r in execute 'select jobname from cron.job where jobname = ''file-search-work''' loop
+  for r in execute 'select jobname from cron.job where jobname in (''file-search-work'', ''graph-reader'')' loop
    perform cron.unschedule(r.jobname);
   end loop;
  end if;
  if to_regclass('vault.secrets') is not null then
-  delete from vault.secrets where name in ('file_search_worker_secret', 'file_search_project_url');
+  delete from vault.secrets where name in ('file_search_worker_secret', 'file_search_project_url', 'graph_reader_secret', 'anthropic_api_key');
  end if;
 
  -- Each schema with everything in it, and what depends on it elsewhere: OKB's and file search's triggers and policies

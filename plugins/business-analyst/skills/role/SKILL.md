@@ -5,11 +5,11 @@ description: Use when a person documents their role, a process they do, or a rol
 
 # Documenting a role
 
-The business analyst, `@business-analyst:business-analyst`, writes down how one role works, one process at a time. A newcomer then learns the role from OKB. OKB is the firm's organisational knowledge base: the `okb` schema in the firm's own Supabase project. A role's knowledge is one Markdown file per process, in the role's knowledge scope. Each file is named after the question it answers, such as `how-a-viewing-is-booked.md`. The files of a role are in one folder of that scope, `roles/<role>/`.
+The business analyst, `@business-analyst:business-analyst`, writes down how one role works, one process at a time. A newcomer then learns the role from OKB. OKB is the firm's organisational knowledge base: the `okb` schema in the firm's own Supabase project. A role's knowledge is one Markdown file per process, in the role's knowledge scope. Each file is named after the question it answers, such as `how-an-order-is-taken.md`. The files of a role are in one folder of that scope, `roles/<role>/`.
 
 A member of staff documents their own role this way. A manager defines a role that no one holds yet the same way, as an **intended** role. A role held today is **current**.
 
-**The role's knowledge scope** is a shared scope for one part of the business, such as Lettings knowledge, `lettings_knowledge`. A person who is an administrator adds it with `okb_add_scope`, as the `okb:records` skill's section 13 says, without `p_private`. The administrator then gives each person who documents the role read, create and edit there, and each newcomer read.
+**The role's knowledge scope** is a shared scope for one part of the firm, such as Customer service knowledge, `customer_service_knowledge`. A person who is an administrator adds it with `okb_add_scope`, as the `okb:records` skill's section 13 says, without `p_private`. The administrator then gives each person who documents the role read, create and edit there, and each newcomer read.
 
 A private scope is never used for a role. Only its owner and the people they grant can read it. It also stays closed for good when its owner leaves without handing it on. Until the firm has a knowledge scope, the role files go in the Routines scope, `routines`. Every member of staff can already read and write there.
 
@@ -23,7 +23,7 @@ The person chooses the mode.
 
 - **Human only:** the person follows the Person lines below, without the business analyst. They write each file in a text editor, and do each step with the `okb` command.
 - **AI guided:** the person asks the business analyst to guide them. Before each step, the business analyst says what the step does and shows the Person line. It follows its own line with the person watching, or asks the person to follow theirs. It stops for the person's approval at the end of each stage.
-- **Human directed:** the person tells the business analyst what to do, such as "write up how I book a viewing". The business analyst follows its lines for each step the person directs.
+- **Human directed:** the person tells the business analyst what to do, such as "write up how I take an order". The business analyst follows its lines for each step the person directs.
 
 Each step below gives a **Person** line and a **Business analyst agent** line.
 
@@ -36,7 +36,7 @@ With the business analyst, the person's own instruction replaces a rule of this 
 - One process is one file, named after the question it answers, in lowercase words joined by hyphens.
 - Every file opens with the five-line header of `template.md`, as a list of five lines: **Role**, **Answers**, **Status**, **Owner** and **Last reviewed**. Status is `current` or `intended`. Last reviewed is a date written as 24 October 2026.
 - Every file ends with "Not yet documented", which lists each gap. A gap is written down as a gap.
-- A file names the role, such as "the lettings negotiator books the viewing". The person who holds the role appears in the Owner line alone.
+- A file names the role, such as "the customer service adviser takes the order". The person who holds the role appears in the Owner line alone.
 - A fact OKB already holds is pointed to, not copied. That is a record by its title, a glossary term, or another file by its path.
 - A claim from outside OKB carries its source. A claim the business analyst could not check is named as unchecked.
 - Each term is spelled out the first time it appears, then used in its short form.
@@ -47,10 +47,10 @@ With the business analyst, the person's own instruction replaces a rule of this 
 - **Person:** names the role, the scope its files go in, and whether it is current or intended. Lists the processes the role does. Without the business analyst, finds the scope's code with `okb okb_get_scopes`, and lists the role's files with `okb list_files bucket=<scope code> prefix=roles/<role>`.
 - **Business analyst agent:**
   1. Says in two sentences what it is there to do, and asks one question. "I'm here to write down how your role works, one process at a time, so a newcomer can learn it from OKB. Which role is it?" is the length and the register.
-  2. Asks which scope the role's files go in, such as Lettings knowledge. Finds its code with `okb_get_scopes`. When the firm has no knowledge scope for that part of the business, says an administrator adds one, and offers `routines` until then.
+  2. Asks which scope the role's files go in, such as Customer service knowledge. Finds its code with `okb_get_scopes`. When the firm has no knowledge scope for that part of the firm, says an administrator adds one, and offers `routines` until then.
   3. Calls `okb_get_authorisations`. The person can document the role when they are an administrator, or hold a live grant in the scope with `read`, `create` and `edit` for `activity` and `evidence` records. Without one, says their administrator gives it, and stops.
   4. Asks whether someone holds the role today, or no one holds it yet. It asks this as its own question, even when the person's words suggest the answer. The answer is the role's status: `current` or `intended`.
-  5. Names the role's folder: `roles/<role>/` for a current role, and `roles/<role>/intended/` for an intended one. `<role>` is the role's title in lowercase words joined by hyphens, such as `lettings-negotiator` or `sales-progressor`.
+  5. Names the role's folder: `roles/<role>/` for a current role, and `roles/<role>/intended/` for an intended one. `<role>` is the role's title in lowercase words joined by hyphens, such as `customer-service-adviser` or `account-manager`.
   6. Lists the folder's files with `list_files`, and reads each one that is there, as step 6 describes. A folder that holds the role's files gives the role and its status in their headers. The business analyst names both to the person in one line.
   7. Asks the person to list every process the role does. Writes the list back as the file name each would have, beside those already in the folder.
 - **Evidence:** the scope's code, the grant, the folder and the list of processes, each with its file name.
@@ -64,10 +64,10 @@ With the business analyst, the person's own instruction replaces a rule of this 
   1. Settles on one process from the list, and names its file.
   2. Asks one question at a time, and waits for each answer. Always has the next question ready, and speaks the way a colleague would.
   3. Asks what starts the process. Then asks each step in order. For each step, asks who does it, what they use, read and write, and how they know it is done.
-  4. Asks what usually goes wrong, and who to go to then. Asks how the process ends, and what it hands to someone else. An example is a sales progressor taking over a sale once the memorandum of sale is sent.
+  4. Asks what usually goes wrong, and who to go to then. Asks how the process ends, and what it hands to someone else. An example is an account manager taking over an order once the customer accepts the quote.
   5. Keeps asking about a step until it is clear. A step the person cannot make clear becomes an open item, as step 5 describes.
   6. Reads a file the person gives with `read_file`, from the agent folder. Takes its steps as said, with the file named as their source.
-  7. Notes each new term as it first comes up. That is an abbreviation such as AST, a system's name such as Loop, or a word the role uses in its own way.
+  7. Notes each new term as it first comes up. That is an abbreviation such as PO, a system's name such as HubSpot, or a word the role uses in its own way.
 - **Evidence:** the answers, the files read, and the terms noted.
 
 **AI guided:** the business analyst reads the process back to the person step by step, and waits for their approval.
@@ -119,7 +119,7 @@ With the business analyst, the person's own instruction replaces a rule of this 
 - **Business analyst agent:**
   1. Lists the role's folder with `list_files`. Downloads each other file with `download_file` into a new file directly inside the agent folder, such as `<file>-<date>.md`, and reads it with `read_file`.
   2. Finds each line the change makes out of date. That is a gap now filled, a step or name the new file changes, or a pointer to a moved file.
-  3. Offers one fix at a time, in one line, such as "`how-a-viewing-is-booked.md` still lists the tenancy offer as not yet documented. Shall I remove that line?"
+  3. Offers one fix at a time, in one line, such as "`how-an-order-is-taken.md` still lists the delivery date as not yet documented. Shall I remove that line?"
   4. Makes each fix the person agrees to, shows the changed file, and uploads it with `overwrite` on the person's yes. Sets its Last reviewed to today.
 - **Evidence:** each file read, each stale line found, and each upload.
 
@@ -139,7 +139,7 @@ The role is done when every process on the list has a file, and the newcomer tes
 
 - **Person:** writes ten questions a newcomer to the role would ask, and answers each from the role's files in OKB alone, quoting the file. Without the business analyst, saves the result with `okb okb_add_record p_scope=<scope code> p_kind=evidence p_title="<role>: newcomer test" p_reason="The newcomer test" p_fields.summary="<each question, its answer and the file it quotes>" p_fields.standing=observed p_fields.source_reference="<scope code>/roles/<role>" p_fields.source_date=<today> p_fields.limitations="<each question left open, or none>" p_preview=true`, then the same without `p_preview`.
 - **Business analyst agent:**
-  1. Writes ten questions a newcomer to the role would ask, such as "Who do I ask when a landlord wants to change the rent?" or "What do I do when a viewing is cancelled?". Shows all ten to the person together, before answering any, and asks one question: whether to change any of them.
+  1. Writes ten questions a newcomer to the role would ask, such as "Who do I ask when a customer wants to change an order?" or "What do I do when an order is cancelled?". Shows all ten to the person together, before answering any, and asks one question: whether to change any of them.
   2. Answers each from OKB alone: it searches the role's scope with `call_function` and `file-search`, with the scope's code as `bucket`. It reads the files and records that answer it. Each answer quotes the file it comes from, with the file's name.
   3. Marks each question it cannot answer from OKB. Each becomes an open item, as step 5 describes.
   4. Gives the person the ten questions, each with its answer and quote, or marked as open.
@@ -168,7 +168,7 @@ Time-bound material goes on a page for the newcomer, apart from the role's files
 
 ## Problems
 
-- **No knowledge scope for that part of the business:** only an administrator adds a scope. The business analyst says so, and offers `routines` until then.
+- **No knowledge scope for that part of the firm:** only an administrator adds a scope. The business analyst says so, and offers `routines` until then.
 - **No grant to upload to the scope, or to make a task in it:** OKB's refusal names the missing action. The business analyst tells the person, and that their administrator can grant it. The person can name another scope they can write.
 - **No grant to save a term in `reference`:** the term becomes a task for an administrator, as step 5 says.
 - **A file of that name is already there, and the upload is refused:** the business analyst downloads and reads that file. It offers to change it in place of a new one. The changed file is uploaded with `overwrite`, on the person's yes.

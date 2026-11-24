@@ -21,15 +21,23 @@ const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 const message = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
+/** The level of a sign-in Supabase Auth has confirmed, from its token's aal claim: aal2 once the sign-in gave a code
+ * from an authenticator app, aal1 otherwise. OKB refuses an administrator's call at aal1 where its second factor
+ * setting says. */
+function levelOf(token: string): string {
+  try { return JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).aal === "aal2" ? "aal2" : "aal1"; }
+  catch { return "aal1"; }
+}
+
 /** The signed-in user, as Supabase Auth itself confirms, or null for a missing or refused token. */
-async function signedIn(req: Request): Promise<{ id: string } | null> {
+async function signedIn(req: Request): Promise<{ id: string; aal: string } | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   if (!token) return null;
   const res = await fetch(`${PROJECT}/auth/v1/user`, {
     headers: { Authorization: `Bearer ${token}`, apikey: req.headers.get("apikey") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "" },
   });
   const user = res.ok ? await res.json().catch(() => null) : null;
-  return typeof user?.id === "string" ? { id: user.id } : null;
+  return typeof user?.id === "string" ? { id: user.id, aal: levelOf(token) } : null;
 }
 
 Deno.serve(async (req) => {
@@ -57,7 +65,7 @@ Deno.serve(async (req) => {
   try {
     const result = await sql.begin(async (tx) => {
       // As PostgREST does for a signed-in request: the user's claims, then the authenticated role.
-      await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: user.id, role: "authenticated" })}, true)`;
+      await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: user.id, role: "authenticated", aal: user.aal })}, true)`;
       await tx`set local role authenticated`;
       const [row] = await tx`select file_search.search(${query}, ${vector}::real[], ${bucket}, ${limit}, ${args.explain === true}) as result`;
       return row?.result;

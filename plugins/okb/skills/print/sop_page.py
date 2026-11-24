@@ -1,6 +1,6 @@
 """Write a standard operating procedure (SOP) for one routine as an A4 page, from its model version.
 
-Usage: python3 sop_page.py <model.json> <glossary.json> <page.html> --picture NAME [--version-id ID]
+Usage: python3 sop_page.py <model.json> <glossary.json> <page.html> --picture NAME [--version-id ID] [--brand=<brand.json>]
 
 The model is the routine's approved model version: what okb_get_record returns, {"cutoff", "version",
 "links"}, a version on its own, or a page of okb_get_history with --version-id naming the version. It
@@ -190,6 +190,7 @@ def main():
     parser.add_argument("page")
     parser.add_argument("--picture", required=True, help="the state machine page's picture, beside the page")
     parser.add_argument("--version-id", default="")
+    parser.add_argument("--brand", default="", help="the firm's brand, as the okb plugin writes it")
     args = parser.parse_args()
     if "/" in args.picture or "\\" in args.picture or args.picture.startswith("."):
         raise SystemExit("the picture is named by its file name alone, beside the page; no page was written")
@@ -198,7 +199,8 @@ def main():
     if not isinstance(glossary, dict) or glossary.get("part") != "glossary" or not isinstance(glossary.get("rows"), list):
         raise SystemExit("the glossary file is not okb_get_reference's result for the glossary; no page was written")
     data = build(version, glossary["rows"], args.picture)
-    page = a4.page(f"SOP: {data['title']}", fill(data), "sop-data", data)
+    brand = a4.read_brand(args.brand)
+    page = a4.page(f"SOP: {data['title']}", fill(data), "sop-data", data, brand)
     with open(args.page, "w", encoding="utf-8", newline="\n") as out:
         out.write(page)
     page_check.write(args.page, outline(data) + page_check.findings_lines(data["findings"]))

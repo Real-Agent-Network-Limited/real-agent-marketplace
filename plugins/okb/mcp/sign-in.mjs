@@ -2,12 +2,15 @@
 // Signs a Supabase Auth user in, at a terminal, and keeps only the session's refresh token.
 //
 //   node sign-in.mjs [--project <ref> --email <email>] [--url <project URL> --key <publishable key>] [--new-password]
-//                    [--folder <session folder>]
+//                    [--second-factor] [--folder <session folder>]
 //   node sign-in.mjs --owner --url <project URL> --key <publishable key> --folder <setup folder>
 //   node sign-in.mjs --join --url <project URL> --key <publishable key> [--email <email>] [--folder <session folder>]
 //
 // --project reuses a saved project's URL, key and email. --url and --key answer those two questions,
 // for a plugin that knows its project, and --email alone answers the email question. --new-password replaces the password.
+// With an authenticator app on the account, the sign-in asks for the app's six-digit code after the password.
+// --second-factor adds an authenticator app to the account: it prints the secret and the otpauth:// address, and asks
+// for a code from the app.
 // --folder also writes the folder's actor file, .okb-actor.json, naming the project and the email, so a
 // session opened on that folder works as this user, with the folder as its agent folder.
 // --owner is the firm's owner's first sign-in, at the end of setup: it asks their name, email and chosen password,

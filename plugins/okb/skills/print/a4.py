@@ -1,4 +1,4 @@
-"""What the print skill's pages share: an A4 page's style, its frame and its text made safe."""
+"""What the print skill's pages share: an A4 page's style, its frame, its text made safe and the firm's brand."""
 import html
 import json
 from datetime import datetime, timezone
@@ -41,10 +41,25 @@ def printed_on(now=None):
     return f"{d.day} {d:%B %Y}"
 
 
-def page(title, body, data_id, data):
-    """A whole A4 page, with its data kept in a JSON block for its checks."""
+def read_brand(path):
+    """The firm's brand, as the okb plugin writes it for a page: its style and its logo, or None with no path."""
+    if not path:
+        return None
+    value = read(path)
+    if not isinstance(value, dict) or not isinstance(value.get("style"), str) or not isinstance(value.get("logo"), str):
+        raise SystemExit("the brand file holds no style and logo; no page was written")
+    return value
+
+
+def brand_style(brand):
+    """The brand's style, after the page's own, so its values win, or nothing."""
+    return f"<style>\n{brand['style']}</style>" if brand else ""
+
+
+def page(title, body, data_id, data, brand=None):
+    """A whole A4 page, with its data kept in a JSON block for its checks, in the firm's brand where one is given."""
     return "\n".join(["<!doctype html>", '<html lang="en-GB"><head><meta charset="utf-8">', f"<title>{esc(title)}</title>",
-                      f"<style>{STYLE}</style></head><body>", body,
+                      f"<style>{STYLE}</style>{brand_style(brand)}</head><body>", (brand["logo"] if brand else ""), body,
                       f'<script type="application/json" id="{data_id}">{script_json(data)}</script>', "</body></html>"]) + "\n"
 
 

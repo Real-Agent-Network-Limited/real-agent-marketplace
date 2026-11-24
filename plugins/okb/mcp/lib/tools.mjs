@@ -13,7 +13,7 @@ import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { READ_LIMIT, readAgentFile } from "./read.mjs";
 import { createHash } from "node:crypto";
-import { accountEmail, agentFiles, agentJson, callFunction, callRpc, currentUser, downloadObject, listObjects, placeAt, readSession, refreshSession, uploadObject, uploadSource, writeAgentFile, writeSession, PROJECT_REF, ROW_LIMIT } from "./session.mjs";
+import { agentFiles, agentJson, callFunction, callRpc, currentUser, downloadObject, listObjects, placeAt, sessionAccess, signInLevel, uploadObject, uploadSource, writeAgentFile, PROJECT_REF, ROW_LIMIT } from "./session.mjs";
 import { sessionFolderStatus } from "./session-folder.mjs";
 
 // The marketplace every client's plugins are installed from, as cli/releases.mjs names it.
@@ -33,6 +33,10 @@ const MAX_COPY_BYTES = 50 * 1024 * 1024;
 // Real Agent's public marketplace, which the install one-liners in its README take.
 export const PUBLIC_MARKETPLACE = "Real-Agent-Network-Limited/real-agent-marketplace";
 const RAW = `https://raw.githubusercontent.com/${PUBLIC_MARKETPLACE}/main/install`;
+// The SHA-256 of install/install.sh and install/install.ps1, which each install command checks before it runs the script.
+// scripts/pin-install.mjs writes them.
+const INSTALL_SH_SHA256 = "dbde66a7871e80a836c3d51ac9ca6b5075d25405af69f51ab32e344300bb5d6f";
+const INSTALL_PS1_SHA256 = "3ac9db745a80b2073fb9885477319c453b5150756e5ef79a73090c08857cbeda";
 
 /** The agent an invited person's folder works with: the business analyst for an administrator, and otherwise none named,
  * so okb setup gives the database operator. */
@@ -40,22 +44,23 @@ export const agentFor = template => template === "administrator" ? "business-ana
 
 /**
  * The commands a person runs to set up their folder and sign in, with the project's address and publishable key, which is
- * public: command, with Real Agent installed, and the README's install one-liners for macOS and Windows when it is not.
+ * public: command, with Real Agent installed, and the README's install one-liners for macOS and Windows when it is not,
+ * each checking the install script's SHA-256 before it runs it.
  * With a code, --join makes the sign-in ask for it and a password they choose. With an agent, --agent names it.
  */
 export function personCommands(url, key, email, join, agent = null) {
   const options = `--email ${email} --url ${url} --key ${key}${join ? " --join" : ""}${agent ? ` --agent ${agent}` : ""}`;
   return {
     command: `node ~/.claude/plugins/marketplaces/${MARKETPLACE_NAME}/plugins/okb/cli/okb.mjs setup ${options}`,
-    install_command: `cd ~ && curl -fsSLO ${RAW}/install.sh && bash install.sh ${PUBLIC_MARKETPLACE} ${options}`,
-    install_command_windows: `cd ~; Invoke-WebRequest -UseBasicParsing ${RAW}/install.ps1 -OutFile install.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 ${PUBLIC_MARKETPLACE} ${options}`,
+    install_command: `cd ~ && curl -fsSLO ${RAW}/install.sh && echo "${INSTALL_SH_SHA256}  install.sh" | shasum -a 256 -c && bash install.sh ${PUBLIC_MARKETPLACE} ${options}`,
+    install_command_windows: `cd ~; Invoke-WebRequest -UseBasicParsing ${RAW}/install.ps1 -OutFile install.ps1; if ((Get-FileHash install.ps1 -Algorithm SHA256).Hash -eq '${INSTALL_PS1_SHA256}') { powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 ${PUBLIC_MARKETPLACE} ${options} } else { Write-Error 'install.ps1 does not match its checksum, and was not run.' }`,
   };
 }
 
 export const TOOLS = [
   {
     name: "whoami",
-    description: "The Supabase Auth user this agent is signed in as: its id and email address, the project's reference as projectRef, the agent folder, as set and as agentFolderPath, resolved, the files directly inside it, as agentFiles, the newest 50 names, newest first, with agentFileCount, how many there are, and the schema rpc uses when a call names none, as defaultSchema. upload_file reads a file directly inside the agent folder, rpc reads and writes JSON there, and download_file writes there.",
+    description: "The Supabase Auth user this agent is signed in as: its id and email address, the project's reference as projectRef, the agent folder, as set and as agentFolderPath, resolved, the files directly inside it, as agentFiles, the newest 50 names, newest first, with agentFileCount, how many there are, the schema rpc uses when a call names none, as defaultSchema, and secondFactor, true when the sign-in gave a code from an authenticator app. upload_file reads a file directly inside the agent folder, rpc reads and writes JSON there, and download_file writes there.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
@@ -100,9 +105,9 @@ export const TOOLS = [
       properties: {
         name: { type: "string", description: "The person's name, as the firm calls them, such as Sam Lee, or Support for Real Agent's staff." },
         email: { type: "string", description: "The person's work email address." },
-        template: { type: "string", description: "An access template's code, such as basic or real_agent, as okb_get_access_templates lists them. Omit for a workflow role." },
-        workflow: { type: "string", description: "A workflow plugin's name, such as appraisal, for a role in it. Give role with it." },
-        role: { type: "string", description: "One role in the workflow's access.json, such as negotiator." },
+        template: { type: "string", description: "An access template's code, such as basic or real-agent, as okb_get_access_templates lists them. Omit for a workflow role." },
+        workflow: { type: "string", description: "A workflow plugin's name, such as orders, for a role in it. Give role with it." },
+        role: { type: "string", description: "One role in the workflow's access.json, such as adviser." },
       },
       required: ["name", "email"],
       additionalProperties: false,
@@ -175,7 +180,7 @@ export const TOOLS = [
   },
   {
     name: "check_plugins",
-    description: "Compare the plugins installed on this computer from the real-agent marketplace with the newest release in the firm's Plugins scope in OKB, signed in as the person. It reads the newest release with a MANIFEST whose plugin.json files match it, and changes nothing in OKB or on the computer. Returns the release, and behind: each installed plugin whose version is lower than the release's, with both versions. With behind empty, or no release in the scope, the reply says nothing about plugins. Also returns sessionFolder, the session's folder: its full path, hasActorFile, hasAgentSetting and agent, madeBySetup, isAgentFolder and connected. A disconnected folder setup made also gives earlier: the agent, the email and the project its earlier sessions had, and reconnect: the command that connects it again. uploadProblems holds the last lines of the folder's sessions/upload-problems.log written since its last upload.",
+    description: "Compare the plugins installed on this computer from the real-agent marketplace with the newest release in the firm's Plugins scope in OKB, signed in as the person. It reads the newest release with a MANIFEST that carries Real Agent's signature and whose plugin.json files match it, and changes nothing in OKB or on the computer. Returns the release, and behind: each installed plugin whose version is lower than the release's, with both versions. With behind empty, or no release in the scope, the reply says nothing about plugins. Also returns sessionFolder, the session's folder: its full path, hasActorFile, hasAgentSetting and agent, madeBySetup, isAgentFolder and connected. A disconnected folder setup made also gives earlier: the agent, the email and the project its earlier sessions had, and reconnect: the command that connects it again. uploadProblems holds the last lines of the folder's sessions/upload-problems.log written since its last upload.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
@@ -262,25 +267,19 @@ export function createTools({ ref, email, agentFolder = null, defaultSchema = nu
 
   async function refresh() {
     cached = null;
-    let saved;
-    try { saved = readSession(ref, email); }
+    let opened;
+    try { opened = await sessionAccess(ref, email); }
     catch (err) { return { ok: false, problem: err instanceof Error ? err.message : String(err) }; }
-    if (!saved) return { ok: false, problem: signedOut(`No Supabase session is saved for ${email} on project ${ref}.`, false) };
+    if (opened.missing) return { ok: false, problem: signedOut(`No Supabase session is saved for ${email} on project ${ref}.`, false) };
+    if (opened.wrongUser) return { ok: false, problem: signedOut(`The saved session is for ${opened.wrongUser}, but this agent is set up for ${email}.`, false) };
+    if (opened.rateLimited) return { ok: false, problem: opened.problem };
+    if (!opened.ok && opened.status) return { ok: false, problem: signedOut(`Supabase ended the session: ${opened.problem}.`, true) };
+    if (!opened.ok) return { ok: false, problem: opened.problem };
 
-    const renewed = await refreshSession(saved.url, saved.publishableKey, saved.refreshToken);
-    if (!renewed.ok) return { ok: false, problem: signedOut(`Supabase ended the session: ${renewed.problem}.`, true) };
-
-    const signedIn = accountEmail(renewed.body.user?.email);
-    if (signedIn !== email)
-      return { ok: false, problem: signedOut(`The saved session is for ${renewed.body.user?.email}, but this agent is set up for ${email}.`, false) };
-
-    // Each refresh token is good once, so the new one is saved before it is used.
-    const { version: _version, ...kept } = saved;
-    writeSession(ref, email, { ...kept, refreshToken: renewed.body.refresh_token });
-    const expiresAt = renewed.body.expires_at ? renewed.body.expires_at * 1000 : Date.now() + renewed.body.expires_in * 1000;
-    cached = { url: saved.url, key: saved.publishableKey, token: renewed.body.access_token, expiresAt };
+    cached = { url: opened.url, key: opened.key, token: opened.token, expiresAt: opened.expiresAt };
     return { ok: true, ...cached };
   }
+
 
   async function whoami() {
     const session = await access();
@@ -290,7 +289,7 @@ export function createTools({ ref, email, agentFolder = null, defaultSchema = nu
     const files = agentFiles(agentFolder);
     return { ok: true, result: { id: user.body.id, email: user.body.email, projectRef: ref, agentFolder, agentFolderPath: folderPath(agentFolder),
       agentFiles: files?.names ?? null, agentFileCount: files?.count ?? null, ...(files && files.count > files.names.length ? { agentFilesTruncated: `newest ${files.names.length} of ${files.count}` } : {}),
-      defaultSchema: defaultSchema ?? "public" } };
+      defaultSchema: defaultSchema ?? "public", secondFactor: signInLevel(session.token) === "aal2" } };
   }
 
   async function callHostedFunction(args) {
@@ -394,8 +393,8 @@ export function createTools({ ref, email, agentFolder = null, defaultSchema = nu
   }
 
   /**
-   * Each installed plugin behind the newest release in the Plugins scope: the newest with a MANIFEST whose plugin.json
-   * files match it, as okb sync passes over a release that fails its check. A scope with no release, or none the person
+   * Each installed plugin behind the newest release in the Plugins scope: the newest with a MANIFEST that carries
+   * Real Agent's signature and whose plugin.json files match it, as okb sync passes over a release that fails its check. A scope with no release, or none the person
    * may read, leaves every plugin as installed from Real Agent's public marketplace, and none is behind.
    */
   async function checkPlugins() {
@@ -403,7 +402,7 @@ export function createTools({ ref, email, agentFolder = null, defaultSchema = nu
     if (!installed) return { ok: false, problem: "This computer's list of installed plugins, installed_plugins.json in the Claude config folder, could not be read." };
     const session = await access();
     if (!session.ok) return session;
-    const { downloadFile: downloadReleaseFile, listReleases, manifestEntries, sha256, RELEASES_BUCKET } = await import(RELEASES.href);
+    const { downloadFile: downloadReleaseFile, listReleases, manifestEntries, releaseFiles, releaseKeysFor, sha256, verifyManifest, RELEASES_BUCKET, SIGNATURE } = await import(RELEASES.href);
     const releaseAccess = { url: session.url, key: session.key, token: session.token };
     const listed = await listReleases(releaseAccess);
     if (!listed.ok) return { ok: false, problem: `The releases in OKB could not be listed: ${listed.problem}` };
@@ -415,13 +414,19 @@ export function createTools({ ref, email, agentFolder = null, defaultSchema = nu
         if (manifest.missing) continue;
         return { ok: false, problem: `The MANIFEST of release ${name} could not be read: ${manifest.problem}` };
       }
+      // A release with no signature of Real Agent's, or one that does not verify: okb sync passes it over too.
+      const signature = await downloadReleaseFile(releaseAccess, RELEASES_BUCKET, `${name}/${SIGNATURE}`);
+      if (!signature.ok && !signature.missing) return { ok: false, problem: `The ${SIGNATURE} of release ${name} could not be read: ${signature.problem}` };
+      if (!signature.ok || !verifyManifest(manifest.body, signature.body, RELEASES_BUCKET, name, releaseKeysFor(releaseAccess.url))) continue;
       let hashes;
       try { hashes = new Map(manifestEntries(manifest.body.toString("utf8")).map(e => [e.path, e.hash])); } catch { continue; }
-      const files = [];
-      for (const plugin of plugins) {
+      // Each plugin.json, from the release's release.zip, or one at a time from a release without one.
+      const listedPaths = plugins.map(plugin => `plugins/${plugin}/.claude-plugin/plugin.json`).filter(path => hashes.has(path));
+      const got = new Map((await releaseFiles(releaseAccess, RELEASES_BUCKET, name, listedPaths)).map((one, i) => [listedPaths[i], one]));
+      const files = plugins.map(plugin => {
         const path = `plugins/${plugin}/.claude-plugin/plugin.json`;
-        files.push(hashes.has(path) ? { plugin, path, got: await downloadReleaseFile(releaseAccess, RELEASES_BUCKET, `${name}/${path}`) } : null);
-      }
+        return got.has(path) ? { plugin, path, got: got.get(path) } : null;
+      });
       const failed = files.find(f => f && !f.got.ok && !f.got.missing);
       if (failed) return { ok: false, problem: `${failed.plugin}'s plugin.json in release ${name} could not be read: ${failed.got.problem}` };
       // A plugin.json the MANIFEST lists that is missing or changed: okb sync passes this release over too.
@@ -481,5 +486,14 @@ export function createTools({ ref, email, agentFolder = null, defaultSchema = nu
     }
   }
 
-  return { TOOLS, callTool };
+  /** One OKB function as the signed-in person, for the page tools' read of the firm's brand: its result, or a throw. */
+  async function call(fn, args = {}) {
+    const session = await access();
+    if (!session.ok) throw new Error(session.problem);
+    const out = await callRpc(session.url, session.key, session.token, fn, defaultSchema ?? undefined, args);
+    if (!out.ok) throw new Error(out.problem);
+    return out.body;
+  }
+
+  return { TOOLS, callTool, call };
 }

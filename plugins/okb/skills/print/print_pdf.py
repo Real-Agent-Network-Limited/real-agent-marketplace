@@ -135,11 +135,12 @@ def main(page, pdf, size="A4"):
     try:
         # The two keychain switches keep the browser off the macOS keychain, as page_check.py does.
         # Both header switches are given: older browsers know only the first.
-        subprocess.run([found, "--headless", "--disable-gpu", "--no-first-run", "--no-default-browser-check",
-                        "--use-mock-keychain", "--password-store=basic",
-                        "--print-to-pdf-no-header", "--no-pdf-header-footer",
-                        "--virtual-time-budget=10000", f"--print-to-pdf={os.path.abspath(pdf)}", url],
-                       capture_output=True, timeout=120, check=False)
+        # The browser's time ends before the okb server's 120 seconds for the whole script, so this script stops it.
+        page_check.run_browser(found, ["--disable-gpu", "--no-first-run", "--no-default-browser-check",
+                                       "--use-mock-keychain", "--password-store=basic",
+                                       "--print-to-pdf-no-header", "--no-pdf-header-footer",
+                                       "--virtual-time-budget=10000", f"--print-to-pdf={os.path.abspath(pdf)}", url],
+                               timeout=105)
     except (OSError, subprocess.TimeoutExpired) as err:
         sys.exit(f"the browser did not finish ({err})")
     if not page_check.written(pdf):

@@ -7,7 +7,7 @@ description: Use when a person, or their agent, works in OKB's records as themse
 
 This skill is how a signed-in actor works in the records of OKB, the firm's organisational knowledge base. Changes to OKB are made by the database operator, `@real-agent:database-operator`, or for an administrator by the business analyst, `@business-analyst:business-analyst`. Each follows this skill's rules on asking before each change. A session that is neither calls the database operator for each change. It passes on the person's answer, quoting their words with the change the agent proposed.
 
-Every task is a call to one of OKB's database functions, in the `okb` schema, through the okb plugin's `rpc` tool, as the signed-in person. OKB itself decides what each call may see and change, from the actor's grants. A record the actor may not read is absent, and a change the actor may not make is refused.
+Every task is a call to one of OKB's database functions, in the `okb` schema, through the okb plugin's `rpc` tool, as the signed-in person. From claude.ai or the Claude phone app, the call goes through Real Agent's connector instead, as "Real Agent's connector" below says. OKB itself decides what each call may see and change, from the actor's grants. A record the actor may not read is absent, and a change the actor may not make is refused.
 
 A person without the agent makes each call with the `okb` command, as the `okb:actor` skill sets it up. Each step's **Person** line gives the command.
 
@@ -31,6 +31,52 @@ Each step below gives a **Person** line and an **Agent** line.
 
 With the agent, the person's own instruction replaces a rule of this skill, such as the order of the reads. The agent names the rule once and does as told. A refusal from OKB or a tool still stands, and the agent gives it to the person with what they can do instead. An autonomous agent follows the Agent lines, in human directed mode, with the person accountable for it as the person.
 
+## Real Agent's connector
+
+In claude.ai, in a browser or the Claude phone app, there is no okb plugin. The agent works in OKB through Real Agent's connector, which calls each OKB function as the signed-in person, within their own grants. Where this skill names one of the okb plugin's tools, the agent uses the connector's tool in its place:
+
+| The okb plugin's tool | The connector's tool |
+|---|---|
+| `rpc`, with an OKB function | `okb`, with `function` and `args` |
+| `call_function`, with the name `file-search` | `okb_file_search`, with `query`, and `bucket` for one scope |
+| `list_files` | `okb_list_files`, with `bucket` and `prefix` |
+| `download_file` | `okb_file_link`, a link that opens the file in the person's browser for 10 minutes |
+| `upload_file` | `okb_file_upload_link`, with `scope` and `name`, a link to Real Agent's upload page, as "Files" says |
+
+`okb_guide` gives this skill one section at a time. The agent reads "Real Agent's connector", 1, 2 and 3 before its first call, and the section for any other task before it starts that task.
+
+The connector also has tools of its own:
+
+- `okb_routines` lists the routines the person may follow. Each is a skill of a workflow plugin their grants reach, from the newest release Real Agent signed. `okb_routine` gives one routine's `SKILL.md`, or a Markdown file in its folder. Before work a routine covers, the agent reads the routine, tells the person which one it follows, and does its steps in order. A step that says it needs Claude Code is done there, on the person's computer. The agent never follows a release or skill that `okb_routines` lists as refused.
+- `okb_show_records` shows the records card. It lists the records the person may read, newest save first, and opens each one to its fields and links. The card saves nothing.
+- `okb_help` answers how to do something with Real Agent from Real Agent's own guides. The agent answers only from the guide it gives. When no guide fits, it says so and names the guides.
+
+The connector has none of the tools that need the person's computer. That means the agent folder, `result_file`, `file_args`, `run_code`, and the tools that draw pages or print PDFs. The agent reads each answer in the tool's reply, and passes a model's payload in `args`. Adding, renaming or deleting a scope, grants, access templates and sign-ins are an administrator's, with the business analyst in Claude Code. For any of these, the connector answers "Real Agent's connector does not reach that function.", and the agent tells the person to do it in Claude Code on their computer.
+
+Every change is a preview first. The `okb` tool runs a task function from section 11 only with `p_preview` true. Without it, the connector refuses with "Show this change on the approval card, and save it with Yes.", and nothing is saved. The agent shows the preview's request on the approval card with `show_approval`, as section 3 says, and the card's Yes saves it. Only the card calls `okb_save_version`.
+
+A change of several saves, or one with its own approval step, is one item on the card: `{"call": {"function", "args"}, "shows"}`. `args` holds the function's arguments, without `p_preview`. `shows` holds one or more lines, in the person's words, saying what the call changes. The card reads from OKB what the call would change, and shows it under those lines. Yes runs the call once, as the person.
+
+One card holds up to 20 items, saves and calls together, with a title for more than one. A card changes each record only once, so two deliverables for one task go on two cards, one after the other.
+
+| `function` | `args` | Section |
+|---|---|---|
+| `okb_add_blocker` | `p_task`, `p_title`, `p_requirements`, `p_reason` | 11 |
+| `okb_add_deliverable` | `p_task`, `p_title`, `p_requirements`, `p_reason` | 11 |
+| `okb_clear_blocker` | `p_blocker`, `p_note`, `p_evidence`, `p_reason` | 11 |
+| `complete_task` | `p_record`, `p_note`, `p_reason` | 4 |
+| `okb_approve_change` | `p_issuance_request_id`, `p_executor_id`, `p_request`, `p_expires_at`, `p_reason` | 5 |
+| `okb_delete_record` | `p_request`, `p_authorisation_id` | 7 |
+| `okb_move_records` | `p_request` | 12 |
+
+`complete_task` is the connector's own call. It saves the note as evidence in the task's scope, and links the task to it with `supports`. Then it completes the task.
+
+A deletion takes two cards. On the first, the administrator approves the deletion with `okb_approve_change`. On the second, `okb_delete_record` deletes the record with that approval's id, which exists only once the first card's Yes has run. The first card's outcome gives the agent the id as `authorisation_id`, and the second card takes it. Without the outcome, the agent reads the id with `okb_get_authorisations`, from the approval whose `request_id` is the deletion request's. An approval of another actor's change, in section 5, gives its id the same way.
+
+The card runs only the call it showed. When the arguments differ, or a record the call changes has changed since the card read it, the connector answers "This change differs from the one the approval card showed, or a record it changes has changed since. Show it on a new card. Nothing was changed." The agent then reads the record again and shows the change on a new card. A second Yes on the same card runs nothing.
+
+In Claude Code with the okb plugin, the agent uses the plugin's own tools. The okb plugin's hook refuses it the connector's record tools: `okb`, the file tools, `okb_guide`, `okb_routines`, `okb_routine`, `okb_show_records` and `okb_help`. The workflow plugins `okb sync` installs hold the same routines. The approval card is the same in both.
+
 ## 1. The actor, their scopes and grants
 
 - **Responsible:** the actor.
@@ -46,7 +92,9 @@ With the agent, the person's own instruction replaces a rule of this skill, such
 - **Person:** names a record, or asks about the work in a scope. Without the agent, runs `okb okb_find_records p_title="<words of the title>"`, then `okb okb_show_record p_record="<title or record id>"`. For a record's versions, runs `okb okb_get_history p_record_id=<record id>`. For a scope's work, runs `okb okb_get_progress p_cutoff=null p_observed_at=null p_cursor=null p_limit=100 p_scope_id=<scope id> result_file=progress-1.json`.
 - **Agent:** calls:
   - `okb_find_records` to find a record the person names by its title or kind, with no record id. It lists each record the actor may read once, at its latest version, newest save first: `{"record_id", "kind", "scope_id", "title", "version_id", "version_number", "change_no", "saved_at", "saved_by"}`. It takes `p_kind`, one of `activity`, `decision`, `model` or `evidence`, `p_scope_id`, and `p_title`, words that must all appear in the title, in any case. Each is left out when not needed. Paging passes the answer's `cutoff` as `p_cutoff` and its `next_cursor` as `p_cursor`, while the answer has one. When more than one record fits, the agent lists each one's title, scope and when it was saved, and asks the person which they mean.
-  - `okb_get_record` with `p_record_id` for a record's latest version and its links. A null answer means the record does not exist or the actor may not read it; the agent says exactly that, and nothing more. The person may name a file in the agent folder to read the record into, as the `okb:graph` skill does. The call then carries `result_file` with that file's full path. The `rpc` tool never replaces a file already there.
+  - `okb_get_record` with `p_record_id` for a record's latest version and its links. A null answer means the record does not exist or the actor may not read it; the agent says exactly that, and nothing more. The person may name a file in the agent folder to read the record into, as the `okb:graph` skill does. The call then carries `result_file` with that file's full path. The `rpc` tool never replaces a file already there. A refused call has no result: name a new file and call again.
+  - For what a scope holds, `okb_find_records` with `p_scope_id`, and the actor skill's `list_files` for the scope's code. It gives the records by kind, with each one's title, who saved it and when, then the files by folder.
+  - For a person's work, `okb_find_records` for each scope the person names, or each scope `okb_get_scopes` lists, keeping the records whose `saved_by` is that person's name. Then `okb_get_assigned`, keeping the tasks among those records. It names that person's sessions scope where `okb_get_scopes` lists it, and offers to search it.
   - `okb_get_history` with `p_record_id` for every version, each with who saved it, when, why, and which fields changed. Paging passes the answer's `cutoff` as `p_cutoff` and its `next_cursor` as `p_cursor`, while the answer has one.
   - `okb_get_assigned` for the tasks assigned to the actor, as section 9 describes.
   - `okb_get_progress` for the activities the actor may read, with counts by state and each activity's dates, blockers and dependencies. For one scope, all five arguments are passed: `p_cutoff`, `p_observed_at`, `p_cursor`, `p_limit` and `p_scope_id`, with null for the ones not needed. Each activity carries its `state`, and its `parent` plan, `{"record_id", "referenced_version_id"}` or null, and its `evidence`: each evidence version its version links to as `supports`, `{"record_id", "referenced_version_id", "current_version_id", "title", "standing", "deleted"}`, or `[]`. Each activity also carries `assignee_name`, and each plan the person who created it, as `creator_actor_id` and `creator_name`. Each activity's `payload` names its owner in `owner_actor_id` and `owner_label`, as section 9 describes. To draw a plan as a board, the agent reads each page into a file with `result_file`, as the `okb:board` skill does.
@@ -106,12 +154,12 @@ A new version carries the whole record again. The agent reads the latest version
 **Deliverables.** An activity's `completion_requirements` are its deliverables: what must exist for it to be completed.
 
 - For a new activity, the agent asks the person for its deliverables, and shows any that the source document states.
-- The person may leave them empty. The agent then tells the person the activity can be completed once its deliverables are written, in a new version.
-- When the agent builds activities from a document, it takes what the document states. That is each activity's deliverables, dates and `depends_on` links, and nothing more.
+- The person may leave them empty, and write them in a later version before the activity is completed.
+- From a document, the agent takes each activity's deliverables, dates and `depends_on` links as the document states them, and nothing more.
 
 **Index, deliverables and blockers.** A plan's board and graph are drawn from its activities, in index order.
 
-- Each activity in a plan carries its `index`, kept apart from its title. A title carries no number.
+- Each activity in a plan carries its `index`. Its title carries no number.
 - A part of the plan is `<n>`, such as `2`. A task is `<part>.<n>`, such as `2.2`. A deliverable is its task's index and a letter, such as `2.2a`. A blocker is its task's index, `-B` and a number, such as `2.2-B1`.
 - Each task carries its `task_type`. A deliverable is its own task, with `task_type` `deliverable`, under the same plan as its task, and the task `depends_on` it.
 - A blocker is its own task, with `task_type` `blocker`, under the same plan as the task it holds up, and that task `depends_on` it. The task also lists it in `blockers`, with `blocker_id` set to the blocker's own `record_id` and `description` set to its title.
@@ -123,10 +171,38 @@ A new version carries the whole record again. The agent reads the latest version
 - **Agent:**
   1. Calls the task function from section 11 with `p_preview` true. It names the record by its id. Its preview holds the request, with the latest version read and the grant found.
   2. Shows the person what it will save: the scope, the kind, the title, the reason, each field it changes, and the links. For an activity, it shows the deliverables, or "Deliverables: none". It saves only when the person agrees, and nothing they decline.
-  3. Calls `okb_save_version` with the preview's `request` and `authorisation_id`, unchanged. A model's payload from a file is a request built as this section describes. When the answer is lost, it retries with the same request, unchanged. When the answer says the previous version is stale, it reads the record again and shows the person the newer version before trying again.
+     With Real Agent's connector, it shows the save on the approval card, as "The approval card" below says, and ends the turn.
+  3. With the card, reads the card's outcome at the next turn, as "The approval card" below says. The outcome is each record saved with its version, OKB's refusal, or declined. It reads each saved record back with `okb_show_record`. On declined, it asks once what to change.
+     Without the card, shows the save as text and asks. Once the person agrees, calls `okb_save_version` with the preview's `request` and `authorisation_id`, unchanged. When the answer is lost, it retries with the same request, unchanged. When the answer says the previous version is stale, it reads the record again and shows the person the newer version before trying again.
 - **Evidence:** the saved version's `version_id` and `version_number`, and the call's result.
 
 **AI guided:** the agent shows the person each save before it is made, and waits for their approval.
+
+### The approval card
+
+The approval card shows one save, or a batch of up to 20, such as an interview's statements. An item can also be a call of several saves, as "Real Agent's connector" above says.
+
+The agent calls the Real Agent connector's `show_approval` with the card's data. It ends the turn with no question. Its reply names the change in one line, and says nothing about the card's buttons. Until the person presses Yes, the agent never says it saved, kept or stored anything. It says what the card will save, such as "I set it up as evidence".
+
+The card has Yes and No buttons. Yes saves each change in the card's order, as the signed-in person, and shows each record's new version or OKB's refusal. A refusal stops the saves after it. No saves nothing. Opened again, the card shows each save OKB holds, with no buttons. A No leaves nothing in OKB. The card keeps it only in that browser's storage, so a card opened on another computer, or with that storage cleared, shows its buttons again. The card gives its outcome to the agent as an update to the model's context. At the next turn, the agent reads it there, and `mcp__ccd_session__read_widget_context`, with `tool_name` the connector's `show_approval` tool as the session names it, is one way to read it where the app has that tool.
+
+The card's data holds these fields. Data missing one is refused, naming each, and no card is shown.
+
+| Field | Value |
+|---|---|
+| `kind` | `approval` |
+| `person` | the person's name, from `okb_get_actor` |
+| `drawn_at` | the time of the preview, to the second, such as "10 November 2026, 14:30:05 UK time" |
+| `title` | for a batch, the batch's title, such as "goods-in check: statements, 10 November" |
+| `saves` | one item for each save, at most 20 |
+
+Each save holds its `title`, `record_id`, `scope` (the scope's name), `record_kind` and `reason`, from the preview's request. Its `changes` hold each field it changes, as `{"field", "old", "new"}`, with `old` null for a new record. Its `links` hold each link, as `{"relation", "target"}`, with the target's title and version number. An activity's save also holds `deliverables`, a list, empty for none. Each save also holds `p_request`, the preview's `request`, and `p_authorisation_id`, the preview's `authorisation_id` or null. The save's title, reason, kind and each change's new value are the request's own.
+
+The card has its own name for most fields. A change to any other field can also hold `label`, its name in the person's words, such as "Kind" for `index`. The card shows the field's own name under it. For a person's id, such as `owner_actor_id`, a change holds `old_shown` and `new_shown`, each person's name. The card shows the name with the start of the id.
+
+A save of a new record shows each field with its value. Otherwise the card shows each value before and after the save. It names each field in words, shows references one to a line, such as "Team: Sales", and leaves out each field the save leaves as it was. A long value is in a block that opens and closes.
+
+Where a save changes the record's links, each of its `links` also holds `target_version_id`, as the request has it. The connector refuses a save whose request writes anything the card does not show. That is another scope or kind, a field or a changed title missing from `changes`, an `old` other than OKB's, a link with no `target_version_id`, or a name that is not that person's. It also refuses a card whose `person` is not the signed-in person. With the connector, the agent then corrects each field the refusal names, and shows the card again. Only a session without the connector shows the save as text.
 
 ## 4. An activity's state
 
@@ -172,24 +248,36 @@ An administrator can approve an agent's exact change, once, instead of granting 
   - For what OKB's documents say, it searches the files as the `okb:actor` skill's "Search results" describes. It calls `call_function` with the name `file-search`, and the question as `query`. Each search carries `result_file`, a new file in the agent folder named for the search, such as `search-<date>-<time>.json`. The agent reads that file with `read_file` before it answers. If the hits do not answer it, it searches again in other words.
   - A search across every scope returns two lists. `reference_hits` holds the top hits in the reference scope's files, ranked apart from everything else. `hits` holds the top hits from every other scope. The agent reads `reference_hits` first. A search across every scope leaves each person's sessions scope out. The agent searches one only when the person asks about an earlier session, as section 17 says. Real Agent's guides are in the Guides scope, `guides`. Every actor reads it, and only Real Agent's actor changes it. For a how-to question, the agent searches it by name, with `"bucket": "guides"`.
   - For records and the work, it reads them as section 2 describes.
-  - A hit found by the graph, with `graph` among its `found`, names the `entities` and `relations` behind it. The agent follows them to say how the hit links to the question, such as a vendor's property and the agent acting for that vendor.
+  - A hit found by the graph, with `graph` among its `found`, names the `entities` and `relations` behind it. The agent follows them to say how the hit links to the question, such as a customer's order and the supplier that serves that customer.
   - It keeps each search's `result_file`. The person may ask how an answer was found, or ask to see the search. The agent then runs the search again with `"explain": true` in the body, into a new result file. It calls the okb plugin's `draw_search` with that file as `search_file` and the question. It checks the page, as the `okb:graph` skill's section 5 describes, and gives the person the page.
   - It answers from each hit's whole section, in the search's `sections`, rather than from the hit's snippet. A section marked `truncated` is the part of a longer section around its hits, and a sheet's part starts with the sheet's first row. When the answer needs more of the section, the agent downloads its file from the scope with `download_file`. It reads the file to the end with `read_file`, part by part, and answers from it.
   - It builds the answer from those sections and records alone. It names where each part comes from: the file and the section's place, or the record.
-  - It answers from what OKB returns alone. It leaves out its own training and general knowledge, the internet, and copies of documents from anywhere else.
+  - It answers from what OKB returns alone. It leaves out its own training and general knowledge, the internet, and copies of documents from anywhere else. The one exception is a question about the firm's work that OKB holds no answer to, as the last point says.
   - It answers from a file it downloaded from a scope in this session, with the okb plugin's `download_file`. It names the scope and the file. It answers from a result file `rpc` or `call_function` wrote in this session as from the reply itself. It answers from a session's copy in the agent folder's `sessions/` folder, as section 17 describes. It never answers from any other file it read with `read_file`. A file the person puts in the agent folder is material for a change they ask for, never a source for an answer.
   - It changes a file in the agent folder only when the person asks. It writes and changes a file there with `Write` and `Edit` only.
   - When a file it read, or a search's section, holds structured data, it offers the data's database form after the answer, in one line. A plan, timetable or task list becomes a plan's activities, drawn with `draw_board`. People, roles and reporting lines, and links between things, become a model record, drawn with `draw_graph`. A recurring process becomes a current-state model, through the business analyst's routine interview, drawn with `draw_state_machine`. A term, a kind of thing or a field the glossary or the data dictionary lacks becomes a proposal through the `okb:reference` skill. The offer names the file, what it holds, the records it would become and the page that draws them. It offers once per file in a session. Another offer or a question in the reply comes first, such as section 18's offer to read waiting parts. This offer then waits for the person's next message. It converts one file at a time, after the person's yes, and shows the records before saving them, as section 3 does. After a conversion, it keeps the uploaded file, and offers to write it again from the records. It deletes the file only when the person asks, as the `okb:actor` skill's "File deletion" says.
-  - If nothing OKB returns answers the question, it says OKB holds no answer to it, and what it searched for. It says OKB holds no definition of a word only when the glossary has no row for it. It then names the glossary read and each search it made. If a search's `stages` show files or passages still waiting, it says the answer may change once they are ready.
+  - If nothing OKB returns answers a question about the firm's work, the agent searches beyond OKB before it says so. In Claude Code, it searches only the connectors the person has already agreed to in this session, such as their email and their files, and asks before the first use of any other. Through Real Agent's connector, it asks before each connector it searches, one at a time. It reads and changes nothing else, and names each connector it searched. When something answers it, the agent gives the answer as an outside source, with its link and date, apart from what OKB holds. It then offers, in one line, to save it as an evidence record with the link in `source_reference`. A question about what a word means, a guide or OKB's own records is answered from OKB alone.
+  - If nothing answers it, it says OKB holds no answer to it, and what it searched for in OKB and in each connector. It says OKB holds no definition of a word only when the glossary has no row for it. It then names the glossary read and each search it made. If a search's `stages` show files or passages still waiting, it says the answer may change once they are ready. Then it offers, in one line, to log the question as a knowledge gap, which everyone in General can read. It offers once per question, and logs it as "Knowledge gaps" below says.
 - **Evidence:** each search and read, and its result, quoted.
 
 **AI guided:** the agent gives the person the answer, with the file and section behind each part. It waits for them before the next question.
+
+### Knowledge gaps
+
+A knowledge gap is a question OKB could not answer, kept as a task under the plan "Knowledge gaps" in General. It is assigned to the person who can get the answer, and completed once the answer is saved. Through Real Agent's connector, the agent follows these steps. In Claude Code, it follows the `real-agent:knowledge-gaps` skill, which gives the same steps in the three modes.
+
+1. **Find the plan.** `okb_find_records` with `p_kind` `activity`, General's `scope_id` and `p_title` "Knowledge gaps". With no plan, the agent says an administrator makes it, and stops.
+2. **Find the next index.** `okb_get_progress` for General, every page while the answer has a `next_cursor`. The gaps are the tasks whose `parent` is the plan. The next index is `1.<n>`, one above the highest. An open gap with the same question is named, and no second one is saved.
+3. **Ask who can get the answer.** `okb_find_people` with General's id and the words of the name, as section 9 describes.
+4. **Preview the gap.** `okb_add_record` with `p_scope` `general`, `p_kind` `activity`, the question in a few words as the title, `p_parent` "Knowledge gaps" and `p_preview` true. Its fields are `activity_kind` `task`, the `index`, the `assignee_actor_id`, and `completion_requirements` naming the answer and where it is saved. The `description` holds four lines: "Asked:" with the question, the person's name and the date. "Searched:" with each search and read made. "Returned:" with what came back. "Who may know:" with the person's own words.
+5. **Save it** on the approval card, as section 3 describes.
+6. **Close it** once the answer is saved as an evidence record. `okb_link` with `supports` to the evidence, then `okb_set_state` to start it if it is Pending and to complete it. The completion note names where the answer is.
 
 ## 7. Deleting a record
 
 A record can be deleted, for example when a person asks for their personal data to be erased. Deleting it removes its content from every version, and from the text of every link to or from it. It also removes it from every approval request that carried it, including another record's approval whose link pointed at it. The record's history of who saved each version and when stays. So does a log of the deletion: who asked, who approved, when, why, and a fingerprint of what was removed. A deletion is final; there is no undo.
 
-The reason is part of the log and is kept for good. It says why the record goes, naming no one and repeating none of the record's content: "Erasure requested by the vendor", not the vendor's name.
+The reason is part of the log and is kept for good. It says why the record goes, naming no one and repeating none of the record's content: "Erasure requested by the customer", not the customer's name.
 
 An administrator may approve their own deletion. While OKB has a single administrator, no other person could approve it, and the approval still records the exact deletion, once, as its own step.
 
@@ -221,12 +309,13 @@ OKB keeps a log of what happened in it:
 - each upload, replacement, move and deletion of a file in a scope;
 - each sign-in, sign-out and expired session;
 - each change OKB refused for want of permission;
-- each change to an access template.
+- each change to an access template;
+- each time a person's sessions are made private, as `sessions_made_private`, or ordinary again, as `sessions_made_ordinary`.
 
 An administrator sees every event outside a private scope, including each deletion of a scope, and in a private scope their own. Anyone else sees:
 - the saves and deletions of records they may read, and the moves of records they may read in either scope;
 - the grants and approvals given to them, and changes to their own actor;
-- the file events, and the changes to a scope's name or description, in scopes where they may read;
+- the file events, the changes to a scope's name or description, and the changes to their own sessions' privacy, in scopes where they may read;
 - the changes OKB refused them;
 - each change to an access template.
 
@@ -492,6 +581,8 @@ A person who is an administrator can delete a scope that holds no record and no 
 
 The okb plugin's hooks copy each session in the agent folder into its `sessions/` folder, as Markdown with what the person and the agent wrote. They upload each copy into the person's sessions scope. Its code is `sessions_` and their Auth user ID with its hyphens removed, such as `sessions_3f2a9c0e4b1d4e7a9f6c2b8d1e5a7c3f`. Its name is the person's name and "'s sessions". The person alone holds a grant there, with `read`, `create`, `edit` and `delete`.
 
+An administrator reads every person's sessions, unless the firm has had that person's sessions made private. A private sessions scope belongs to its person, as section 20 describes, and an administrator sees only its name and its owner. A person whose sessions are private makes them ordinary again, so administrators read them, with `okb_make_sessions_ordinary`. It needs OKB's upgrade 0008.
+
 - **Responsible:** the actor.
 - **Person:** asks what was said or agreed in an earlier session. Without the agent, runs `okb okb_get_scopes` for their sessions scope's code. The code starts `sessions_`, and the scope's name is their own. Searches the sessions with `okb call_function name=file-search body.query="<the question>" body.bucket=<sessions scope code> result_file=search.json`, and reads each hit's section in `search.json`. Opens the session's copy in `sessions/` in the agent folder to read it whole. Removes a session's copy from OKB with `okb call_function name=file-search-purge body.bucket=<sessions scope code> body.file=<file name>`.
 - **Agent:**
@@ -499,40 +590,48 @@ The okb plugin's hooks copy each session in the agent folder into its `sessions/
   2. Calls `call_function` with the name `file-search`, the question as `query`, and the scope's code as `bucket`. A search across every scope leaves sessions scopes out. So the agent names the sessions scope's code as `bucket`, only when the person asks about an earlier session. Reads the result file with `read_file`, as section 6 describes.
   3. Reads a session's copy in `sessions/` with `read_file` for its whole text, or for a session too new to be found by search.
   4. Answers with each session's title and date, and quotes what was said. A decision or a change found there is checked against the records, as section 2 describes, before it is given as standing.
+  5. When a person whose sessions are private asks to make them ordinary, says that every administrator then reads them, and waits for their agreement and their reason. Calls `okb_make_sessions_ordinary` with the reason. Without the agent, the person runs `okb okb_make_sessions_ordinary p_reason="<why>"`.
 - **Evidence:** each search and read, and its result, quoted.
 
 **AI guided:** the agent gives the person what was said, with the session's title and date. It waits for them before the next question.
 
 ## 18. A file's graph
 
-OKB keeps the things each file names, such as vendors, buyers, properties and agents, and how they relate. Each thing is of a class in the firm's glossary, and each relation is one of the glossary's relationships. A search follows those links. The agent reads each new part of a file once, in the person's Claude subscription, and saves what it finds. OKB calls no language model. The agent reads a part only in a scope where the person may read, and saves it only where they may also create.
+OKB keeps the things each file names, such as customers, orders and suppliers, and how they relate. Each thing is of a class in the firm's glossary, and each relation is one of the glossary's relationships. A search follows those links.
 
-The agent names a part no agent has read yet as "waiting to be read for the graph". It names a part still waiting for its text or its vector as one OKB is still preparing. It reads parts only after the person says yes.
+Each new part of a file is read once, by one of two readers:
 
-- **Responsible:** the actor who uploads the file, or any reader of the scope who asks.
-- **Person:** uploads a file, or asks for a scope's waiting parts to be read. Without the agent, runs `okb okb_get_unextracted p_scope="<scope name>" p_limit=20 result_file=waiting.json` and reads each part's text in `waiting.json`, with the `classes` and `relationships` it lists. Writes the part's entities and relations as section 19 describes, saves them as `entities.json` and `relations.json`, and runs `okb okb_save_extraction p_chunk=<chunk id> p_entities=@entities.json p_relations=@relations.json`. Adds `p_replace=true` to correct a part they saved.
+- **Graph reader**, once the firm has turned it on. An administrator turns it on by typing the firm's own Anthropic API key on the Real Agent connector's graph reader card, `show_graph_reader`, as the business analyst describes, and turns it off there. OKB then reads each new part within a day, with Claude Haiku 5.5, by the rules in section 19, and saves what Claude finds in the name of Graph reader. It reads the parts of every scope's files except private scopes, sessions scopes, the Administration and Guides scopes, and the plugin scopes. A month's reads stop at a cost cap, and a part waits for the next month once the cap is reached. A part whose answer fails 3 times is marked failed, with its reason. A finding that fits no class or relationship in the glossary is set aside, and the part's other findings are saved.
+- **The person's agent**, in the person's own Claude subscription, after their yes: everywhere while Graph reader is off, and in the scopes it leaves out while it is on. It reads a part only in a scope where the person may read, and saves it only where they may also create.
+
+`okb_get_graph_reader` says which: `on`, and `scopes`, the scopes Graph reader reads that the person may read. A person corrects a part's entities and relations in a scope where they may read and create. A person's save of a part stands: a later answer from Claude for that part is set aside.
+
+The agent names a part not yet read as "waiting to be read for the graph". It names a part still waiting for its text or its vector as one OKB is still preparing. It names a failed part as one OKB could not read, with its reason.
+
+- **Responsible:** Graph reader, for each new part of a scope it reads while it is on. The actor whose agent reads a part, or who corrects one.
+- **Person:** uploads a file, or asks for a scope's waiting parts to be read. Without the agent, runs `okb okb_get_graph_reader` to see whether Graph reader reads the scope. To read a scope's waiting parts themselves, runs `okb okb_get_unextracted p_scope="<scope name>" p_limit=20 result_file=waiting-<date and time>.json` and reads each part's text in that file, with the `classes` and `relationships` it lists. Its `failed_chunks` gives each failed part, with its text and its reason. In a scope Graph reader reads, reads only the failed parts. To read a file's parts and where each one's graph stands, runs `okb okb_get_file_parts p_scope="<scope name>" p_file="<file path>" result_file=parts-<date and time>.json`. Writes a part's entities and relations as section 19 describes, saves them as `entities.json` and `relations.json`, and runs `okb okb_save_extraction p_chunk=<chunk id> p_entities=@entities.json p_relations=@relations.json`. Adds `p_replace=true` to correct a part.
 - **Agent:**
-  1. After each `upload_file` the person agreed to, calls `okb_get_unextracted` with the file's scope as `p_scope`. While its `awaiting_text` is above 0, tells the person OKB is still preparing the file, and calls it again at the person's next message. Once `awaiting_text` is 0, names the parts from `waiting` and offers to read them, such as "Your 3 files have 24 parts waiting to be read for the graph. Shall I read them now?" Reads them only after the person's yes.
-  2. A file search's `stages.awaiting_extraction` above 0, or `okb_get_unextracted`'s `waiting` above 0, shows parts waiting. Says so in one line, with one offer. After a search in one scope, it names the scope, such as "The General scope has 17 parts waiting to be read for the graph. Shall I read them now?" After a search across every scope, it gives the total and asks which scope to read, such as "412 parts in your scopes are waiting to be read for the graph. Which scope shall I read?" Calls `okb_get_unextracted` for the scope the person names. Offers once per scope in a session, and once in a session for a search across every scope.
-  3. Reads up to 20 parts after the person's yes. Above 20, its own upload's included, the offer gives the count first, and asks before reading any.
-  4. Takes the glossary's classes and relationships from the answer's `classes` and `relationships`, as section 19 describes. When `classes` is empty, tells the person the glossary has no classes yet, so nothing can be saved, and offers to propose classes through the `okb:reference` skill.
-  5. For each part in `chunks`, follows section 19, and saves the part with `okb_save_extraction`. Calls `okb_get_unextracted` again for the next page while `waiting` is above 0 and the person agreed to that many.
-  6. Asked to read a scope's waiting parts, does steps 3 to 5 for the scope.
+  1. Calls `okb_get_graph_reader` once in a session, before its first step below.
+  2. After each `upload_file` the person agreed to, in a scope Graph reader reads, tells the person OKB reads the file's parts for the graph within a day. Elsewhere, calls `okb_get_unextracted` with the file's scope as `p_scope`. While its `awaiting_text` is above 0, tells the person OKB is still preparing the file, and calls it again at the person's next message. Once `awaiting_text` is 0, names the parts from `waiting` and offers to read them, such as "Your 3 files have 24 parts waiting to be read for the graph. Shall I read them now?" Reads them only after the person's yes.
+  3. A file search's `stages.awaiting_extraction` above 0 shows parts waiting. For a scope Graph reader reads, says so in one line, once in a session, such as "17 parts in the General scope are waiting to be read for the graph. OKB reads them within a day." Elsewhere, says so in one line, with one offer. After a search in one scope, it names the scope, such as "The General scope has 17 parts waiting to be read for the graph. Shall I read them now?" After a search across every scope, it gives the total and asks which scope to read. Offers once per scope in a session. `stages.failed_extraction` above 0 shows failed parts: names them from `failed_extraction_parts`, with each reason, and offers to read them.
+  4. Reads up to 20 parts after the person's yes. Above 20, its own upload's included, the offer gives the count first, and asks before reading any. In a scope Graph reader reads, reads each part in `failed_chunks`. Elsewhere, reads each part in `chunks` and `failed_chunks`.
+  5. Takes the glossary's classes and relationships from the answer's `classes` and `relationships`, as section 19 describes. When `classes` is empty, tells the person the glossary has no classes yet, so nothing can be saved, and offers to propose classes through the `okb:reference` skill.
+  6. For each part it reads, follows section 19, and saves the part with `okb_save_extraction`. Calls `okb_get_unextracted` again for the next page while parts wait and the person agreed to that many.
   7. Reports how many parts it saved, and the entities and relations each save gave.
   8. For each file it read that holds a plan, a table or a list, offers the file's database form, as section 6 says.
-  9. Asked to correct a part's entities and relations, reads the part again and saves them with `p_replace` true. The actor who saved them, or an administrator, may replace them.
+  9. Asked to correct a part's entities and relations, calls `okb_get_file_parts` for the file, reads the part's `text` by section 19, and saves it with `p_replace` true. A person with read and create in the scope replaces Graph reader's save. The actor who saved a part, or an administrator, replaces any other save.
 - **Evidence:** each call's result, quoted.
 
 **AI guided:** the agent shows the person each part's entities and relations before it saves them, and waits for their approval.
 
 ## 19. Reading a part for its graph
 
-The agent follows this section to read one part of a file in OKB. It writes down the things the part names, and how they relate. Section 18 says when it reads a part.
+OKB gives Claude these rules to read each part of a file while Graph reader is on, and a person, or their agent, follows them to read or correct a part. They write down the things the part names, and how they relate. Section 18 says when a part is read.
 
 These rules are adapted from EdgeQuake's entity extraction instructions, `edgequake/crates/edgequake-pipeline/src/prompts/entity_extraction.rs` and `prompts/parser/tuple_parser.rs`, Copyright 2024-2026 Raphaël MANSUY, under the Apache License 2.0. EdgeQuake ported them from LightRAG, Copyright (c) 2025 LightRAG Team, under the MIT License. The okb plugin's `NOTICE` file and `LICENSES` folder hold both notices and licences. The changes are these: the types and relation names come from the firm's glossary, the output is the JSON that `okb_save_extraction` takes, and the limits are OKB's.
 
-- **Responsible:** the actor whose agent reads the part.
-- **Person:** reads the part's text in `waiting.json`, and writes its entities and relations by the rules below, as `entities.json` and `relations.json`.
+- **Responsible:** Graph reader, or the actor whose agent reads or corrects the part.
+- **Person:** reads the part's text in the file `okb_get_unextracted` or `okb_get_file_parts` wrote, and writes its entities and relations by the rules below, as `entities.json` and `relations.json`.
 - **Agent:** takes the classes and relationships from `okb_get_unextracted`, then reads each part by the rules below, and saves it as section 18 describes.
 - **Evidence:** each save's result, quoted.
 
@@ -541,10 +640,10 @@ These rules are adapted from EdgeQuake's entity extraction instructions, `edgequ
 **Types and relationships:**
 
 - `okb_get_unextracted` lists the glossary's classes as `classes`, and its relationships as `relationships`, each `{"relationship", "from_class", "to_class"}`.
-- An entity's type is exactly one of those classes, written as the glossary writes it, such as `vendor`, `property` or `agent`.
-- A relation's name is exactly one of those relationships, such as `owns`, from a `vendor` to a `property`. It goes from an entity of its `from_class` to an entity of its `to_class`.
+- An entity's type is exactly one of those classes, written as the glossary writes it, such as `customer`, `order` or `supplier`.
+- A relation's name is exactly one of those relationships, such as `places`, from a `customer` to an `order`. It goes from an entity of its `from_class` to an entity of its `to_class`.
 - There is no other type and no other relation name. A thing that fits no class is left out, and so is a relation that fits no relationship.
-- When a part names something that matters and fits no class, or a relation that fits no relationship, the agent may propose a new class or relationship to the person, through the `okb:reference` skill. It is saved only when the person approves. The agent then reads the part again, with the new class or relationship. Until the person decides, the agent leaves that part unsaved.
+- When a part names something that matters and fits no class, or a relation that fits no relationship, a person's agent may propose a new class or relationship to the person, through the `okb:reference` skill. It is saved only when the person approves. The agent then reads the part again, with the new class or relationship. Until the person decides, the agent leaves that part unsaved.
 
 **Each part.** Read the part's `text` alone. Use nothing from other parts, other files or the agent's own knowledge.
 
@@ -576,21 +675,30 @@ These rules are adapted from EdgeQuake's entity extraction instructions, `edgequ
 - Give at most 100 entities and 200 relations for one part. Give fewer when the part names fewer.
 - Write names, keywords and descriptions in English. Keep a proper name in its own language.
 
+**Before the answer:**
+
+- Two names that differ only in capitals or spacing are one name.
+- Check each relation's `source` and `target` against the entity names. Each is the name of an entity in this part, written exactly as in its entity.
+- Check that each relation's `source` and `target` are two different entities.
+- Check that each name has one type.
+- Check that each relation's source is of its relationship's `from_class`, and its target of its `to_class`.
+- Correct each entity or relation that fails a check, or remove it.
+
 **The save:**
 
-Save the part with `okb_save_extraction`. In this example, the glossary has the classes `vendor`, `property` and `agent`, and the relationships `owns`, from a vendor to a property, and `acts for`, from an agent to a vendor:
+Save the part with `okb_save_extraction`. In this example, the glossary has the classes `customer`, `order` and `supplier`, and the relationships `places`, from a customer to an order, and `supplies`, from a supplier to a customer:
 
 ```json
 {"function": "okb_save_extraction", "schema": "okb", "args": {
   "p_chunk": "<the part's chunk_id>",
   "p_entities": [
-    {"name": "J. Smith", "type": "vendor", "description": "J. Smith is selling Oak Cottage."},
-    {"name": "Oak Cottage", "type": "property", "description": "Oak Cottage is owned by J. Smith and is to be sold."},
-    {"name": "Harbour Estates", "type": "agent", "description": "Harbour Estates is instructed to sell Oak Cottage for J. Smith."}
+    {"name": "J. Smith", "type": "customer", "description": "J. Smith ordered 40 oak panels."},
+    {"name": "Order 1042", "type": "order", "description": "Order 1042 is for 40 oak panels for J. Smith."},
+    {"name": "Harbour Timber", "type": "supplier", "description": "Harbour Timber supplies the oak panels for Order 1042."}
   ],
   "p_relations": [
-    {"source": "J. Smith", "target": "Oak Cottage", "relationship": "owns", "keywords": ["freehold"], "description": "J. Smith owns Oak Cottage freehold."},
-    {"source": "Harbour Estates", "target": "J. Smith", "relationship": "acts for", "keywords": ["sole agency"], "description": "Harbour Estates acts for J. Smith on a sole agency."}
+    {"source": "J. Smith", "target": "Order 1042", "relationship": "places", "keywords": ["phone order"], "description": "J. Smith placed Order 1042 by phone."},
+    {"source": "Harbour Timber", "target": "J. Smith", "relationship": "supplies", "keywords": ["trade account"], "description": "Harbour Timber supplies J. Smith on a trade account."}
   ]
 }}
 ```
@@ -639,7 +747,7 @@ An administrator sees each private scope's name and its owner. Its records, file
 
 ## 21. Access templates
 
-An **access template** is a named set of grants, which OKB holds. Each of its grants names a scope by its code, its record kinds, its actions and whether it is limited to the person's own records. OKB starts with three. `administrator` is the client's administrator, with administrator authority and no grant. `basic` is a member of staff. `real_agent` is Real Agent's staff, and the one template that changes the `plugins` scope's files.
+An **access template** is a named set of grants, which OKB holds. Each of its grants names a scope by its code, its record kinds, its actions and whether it is limited to the person's own records. OKB starts with three. `administrator` is the client's administrator, with administrator authority and no grant. `basic` is a member of staff. `real-agent` is Real Agent's staff, and the one template that changes the `plugins` scope's files.
 
 - Every signed-in actor reads the templates.
 - Only a person who is an administrator gives a person a template, or changes one. Each change gives a reason, and the audit log, section 8, lists it as `access_template_changed`.
@@ -659,6 +767,13 @@ An **access template** is a named set of grants, which OKB holds. Each of its gr
 ## Files
 
 Each scope's files are in its own private bucket, named after the scope's code. The okb plugin's `upload_file`, `list_files` and `download_file` upload, list and download them. The `okb:actor` skill's "Search results" and "File deletion" sections cover searching them and deleting one for good. Sections 18 and 19 cover the graph of their parts.
+
+From claude.ai or the phone, the agent adds a file with the connector's `okb_file_upload_link`. It gives the scope's code and the new file's path in the scope, such as `receipts/2026-11-18 taxi.jpg`, ending in the file's type. Then it gives the person the link.
+
+- On the upload page, the person chooses the file and presses Send. Their browser sends it straight to their firm's Supabase, and no file passes through Real Agent. Nothing is saved until they press Send, so the upload needs no approval card.
+- The link adds that one file, and stops working 2 hours after the agent asked for it. After that, the person asks the agent for a new link.
+- Storage gives a link only when the person may add files to the scope. It refuses a name already in the scope, and nothing is replaced. The agent then asks for a link with another name.
+- The page takes the link out of the address bar as it opens, so reloading the page loses it. The person then asks the agent for a new link.
 
 ## Problems with records
 
@@ -685,6 +800,7 @@ OKB's refusals are its rules at work, and the agent reports each one as it came,
 - **`invalid input syntax for type uuid`:** an `assignee_actor_id` or `owner_actor_id` is not an actor's id. The agent takes the id from `okb_find_people`.
 - **`An activity index is one line`, `Only a task has a task type` or `Task types are work, deliverable and blocker`:** the index holds a line break, a plan was given a task type, or the task type is another word. The agent corrects it as the person agrees.
 - **`More than one record has the title "<title>"`:** a task function's record fits more than one record. The person names it by one of the record ids listed.
+- **`<file> already exists. Name a new file; nothing is replaced.`:** the call named a `result_file` already in the agent folder, and was refused before anything was sent. The file holds an earlier answer. The agent names a new file, such as one carrying the date and time, and calls again.
 - **`Record unavailable: no record you can read has the title "<title>"`:** no record the actor may read has that exact title. The agent finds it with `okb_find_records` and words of the title, and names it by its record id.
 - **`Scope unavailable: no scope has the id, code or name "<scope>"`:** the scope is named another way. `okb_get_scopes` lists each scope's id, code and name.
 - **`No grant of yours covers <actions> on <kind> records in <scope>. An administrator can grant it, or approve this exact change`:** the actor holds no grant for the change, as section 3's **Authority** describes. An administrator can grant it, or approve the preview's request.

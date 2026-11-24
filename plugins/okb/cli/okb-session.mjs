@@ -7,7 +7,7 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readActor } from "../mcp/lib/actor-file.mjs";
-import { accountEmail, PROJECT_REF, readSession, refreshSession, writeSession } from "../mcp/lib/session.mjs";
+import { accountEmail, PROJECT_REF, sessionAccess } from "../mcp/lib/session.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const quote = value => process.platform === "win32" ? `"${value}"` : `'${String(value).replaceAll("'", `'\\''`)}'`;
@@ -40,22 +40,22 @@ export function whichSignIn({ project, email, cwd = process.cwd(), home = homedi
 
 /**
  * Opens the saved sign-in: { ok: true, ref, email, access: { url, key, token } } or { ok: false, problem }.
- * Each refresh token is good once, so the new one is saved before it is used.
+ * sessionAccess renews it at most about once an hour, one process at a time.
  */
 export async function openAccess(options = {}) {
   let who;
   try { who = whichSignIn(options); } catch (err) { return { ok: false, problem: err.message }; }
   const { ref, email } = who;
   const signIn = `Sign in again in your folder with: ${SIGN_IN}`;
-  let saved;
-  try { saved = readSession(ref, email); } catch (err) { return { ok: false, problem: `${err.message} ${signIn}` }; }
-  if (!saved) return { ok: false, problem: `${email} is not signed in to project ${ref} on this computer. ${signIn}` };
-  let renewed;
-  try { renewed = await refreshSession(saved.url, saved.publishableKey, saved.refreshToken); }
-  catch (err) { return { ok: false, problem: `Project ${ref} could not be reached: ${err?.cause?.code ?? err?.message ?? err}` }; }
-  if (!renewed.ok) return { ok: false, problem: `Project ${ref} ended ${email}'s sign-in: ${renewed.problem}. ${signIn}` };
-  if (accountEmail(renewed.body.user?.email) !== email) return { ok: false, problem: `The saved sign-in is for ${renewed.body.user?.email}, not ${email}. ${signIn}` };
-  const { version: _version, ...kept } = saved;
-  writeSession(ref, email, { ...kept, refreshToken: renewed.body.refresh_token });
-  return { ok: true, ref, email, access: { url: saved.url, key: saved.publishableKey, token: renewed.body.access_token } };
+  let opened;
+  try { opened = await sessionAccess(ref, email); }
+  catch (err) {
+    if (err?.cause || err instanceof TypeError) return { ok: false, problem: `Project ${ref} could not be reached: ${err?.cause?.code ?? err?.message ?? err}` };
+    return { ok: false, problem: `${err.message} ${signIn}` };
+  }
+  if (opened.missing) return { ok: false, problem: `${email} is not signed in to project ${ref} on this computer. ${signIn}` };
+  if (opened.wrongUser) return { ok: false, problem: `The saved sign-in is for ${opened.wrongUser}, not ${email}. ${signIn}` };
+  if (!opened.ok && opened.status) return { ok: false, problem: `Project ${ref} ended ${email}'s sign-in: ${opened.problem}. ${signIn}` };
+  if (!opened.ok) return { ok: false, problem: opened.problem };
+  return { ok: true, ref, email, access: { url: opened.url, key: opened.key, token: opened.token } };
 }

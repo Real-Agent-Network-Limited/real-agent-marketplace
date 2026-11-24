@@ -1,4 +1,4 @@
--- okb_tests 1.5.1
+-- okb_tests 1.11.0
 -- OKB: setup tests, installed as stored functions in their own schema, okb_tests.
 -- Install this file once, as the postgres login, then run the checks part by part, in order:
 --   select okb_tests.parts();
@@ -4411,7 +4411,7 @@ begin
   if msg is distinct from 'The code plugins_okb names one of Real Agent''s own plugins, which only the plugins scope keeps' then
    raise exception 'FAIL plugin scopes: okb_add_scope made, or refused another way, plugins_okb: %',msg; end if;
   msg:=null;
-  begin insert into okb.scope(code,display_name,description,created_by) values('plugins_real_agent','Plugins: real-agent','Rolled-back fixture',h);
+  begin insert into okb.scope(code,display_name,description,created_by) values('plugins_real_agent','Plugins: real_agent','Rolled-back fixture',h);
   exception when check_violation then msg:=sqlerrm; end;
   if msg is null then raise exception 'FAIL plugin scopes: the postgres login made plugins_real_agent'; end if;
   raise notice 'ok - no scope takes the code of one of Real Agent''s own plugins'' scopes, such as plugins_okb';
@@ -4501,6 +4501,368 @@ begin
  end;
 end $links$;
 
+-- The second factor: under administrators, an administrator's password-only sign-in has no caller and sees no file, and
+-- every other actor keeps its password sign-in. Only an administrator sets it, with a reason, and with a code to turn
+-- it on. The audit log gives each change to administrators, and the log of changes is append-only.
+create function okb_tests.suite_38_second_factor() returns void language plpgsql set search_path = pg_catalog, public, extensions, okb, okb_private, okb_storage, storage, auth, file_search, okb_tests as $factor$
+declare h uuid:=gen_random_uuid(); w uuid:=gen_random_uuid(); ap uuid:=gen_random_uuid(); sc uuid:=gen_random_uuid();
+ r jsonb; msg text; t0 timestamptz:=clock_timestamp(); v text; who uuid; lvl text; want boolean; got boolean;
+begin
+ begin
+  insert into auth.users(id) values(h),(w),(ap);
+  perform okb_tests.approve_fixture(null);
+  insert into okb.actor(actor_id,auth_user_id,display_name,actor_kind,accountable_human_id,authority_class,enabled)
+   values(h,h,'Factor test administrator','human',h,'administrator',true);
+  perform okb_tests.approve_fixture(h);
+  insert into okb.actor(actor_id,auth_user_id,display_name,actor_kind,accountable_human_id,authority_class,enabled)
+   values(w,w,'Factor test staff','human',w,'restricted',true),(ap,ap,'Factor test application','application',h,'restricted',true);
+  perform set_config('okb.provisioning_actor','',true);
+  insert into okb.scope(scope_id,code,display_name,description,created_by) values(sc,'auth_test_factor','Factor test scope','Rolled-back fixture',h);
+  perform okb_private.provision_grant(h,gen_random_uuid(),w,sc,array['activity'],null,array['read'],null::timestamptz,'Rolled-back fixture');
+  insert into storage.objects(bucket_id,name,owner_id) values('auth_test_factor','note.md',h::text);
+  if (select second_factor from okb_private.sign_in_setting)<>'off' then raise exception 'FAIL second factor: the checks did not start with the setting off'; end if;
+
+  -- Each value, with a password-only sign-in, aal1, and one with a code, aal2: who OKB answers.
+  for v, who, lvl, want in values
+    ('off',h,'aal1',true),('off',w,'aal1',true),('off',ap,'aal1',true),
+    ('administrators',h,'aal1',false),('administrators',h,'aal2',true),('administrators',w,'aal1',true),('administrators',w,'aal2',true),('administrators',ap,'aal1',true) loop
+   update okb_private.sign_in_setting set second_factor=v;
+   perform set_config('request.jwt.claims',jsonb_build_object('sub',who,'role','authenticated','aal',lvl)::text,true);
+   execute 'set local role authenticated';
+   msg:=null; got:=false;
+   begin r:=okb.okb_get_actor(); got:=(r->>'actor_id')=who::text; exception when sqlstate '42501' then msg:=sqlerrm; end;
+   execute 'reset role';
+   if got is distinct from want or (not want and msg is distinct from 'No enabled OKB actor for this Auth user') then
+    raise exception 'FAIL second factor: with %, % at % was answered % (%), not %',v,(select display_name from okb.actor where actor_id=who),lvl,got,msg,want; end if;
+  end loop;
+
+  -- A token with no aal claim counts as a password alone, and Storage shows a refused sign-in no file.
+  update okb_private.sign_in_setting set second_factor='administrators';
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',h,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  msg:=null;
+  begin perform okb.okb_get_actor(); exception when sqlstate '42501' then msg:=sqlerrm; end;
+  got:=exists(select 1 from storage.objects where bucket_id='auth_test_factor');
+  execute 'reset role';
+  if msg is null or got then raise exception 'FAIL second factor: a token with no aal claim was answered, or saw a file (%, %)',msg,got; end if;
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',h,'role','authenticated','aal','aal2')::text,true);
+  execute 'set local role authenticated';
+  got:=exists(select 1 from storage.objects where bucket_id='auth_test_factor');
+  execute 'reset role';
+  if not got then raise exception 'FAIL second factor: an administrator''s sign-in with a code saw no file'; end if;
+  -- A person who is not an administrator reads with a password alone.
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',w,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  got:=exists(select 1 from storage.objects where bucket_id='auth_test_factor');
+  execute 'reset role';
+  if not got then raise exception 'FAIL second factor: a restricted person''s password-only sign-in saw no file in a scope it reads'; end if;
+  -- The setting takes off and administrators alone.
+  msg:=null;
+  begin update okb_private.sign_in_setting set second_factor='everyone'; exception when sqlstate '23514' then msg:=sqlerrm; end;
+  if msg is null then raise exception 'FAIL second factor: the setting took a value other than off and administrators'; end if;
+  update okb_private.sign_in_setting set second_factor='off';
+
+  -- Only a person who is an administrator sets it, with a reason, and with a code to turn it on.
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',w,'role','authenticated','aal','aal2')::text,true);
+  execute 'set local role authenticated';
+  msg:=null;
+  begin perform pg_temp.raised(okb.okb_set_second_factor('administrators','Rolled-back fixture')); exception when sqlstate '42501' then msg:=sqlerrm; end;
+  execute 'reset role';
+  if msg is distinct from 'Only a person who is an administrator sets the second factor' then raise exception 'FAIL second factor: a restricted person set it: %',msg; end if;
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',h,'role','authenticated','aal','aal1')::text,true);
+  execute 'set local role authenticated';
+  msg:=null;
+  begin perform okb.okb_set_second_factor('administrators','Rolled-back fixture'); exception when sqlstate '22023' then msg:=sqlerrm; end;
+  if msg is distinct from 'Sign in with a code from your authenticator app, then set the second factor' then
+   raise exception 'FAIL second factor: an administrator with a password alone turned it on: %',msg; end if;
+  execute 'reset role';
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',h,'role','authenticated','aal','aal2')::text,true);
+  execute 'set local role authenticated';
+  msg:=null;
+  begin perform okb.okb_set_second_factor('administrators',' '); exception when sqlstate '22023' then msg:=sqlerrm; end;
+  if msg is distinct from 'Give the reason for the change, as p_reason' then raise exception 'FAIL second factor: no reason was taken: %',msg; end if;
+  msg:=null;
+  begin perform okb.okb_set_second_factor('everyone','Rolled-back fixture'); exception when sqlstate '22023' then msg:=sqlerrm; end;
+  if msg is distinct from 'The second factor is off or administrators, as p_value' then raise exception 'FAIL second factor: another value was taken: %',msg; end if;
+  msg:=null;
+  begin perform okb.okb_set_second_factor('off','Rolled-back fixture'); exception when sqlstate '22023' then msg:=sqlerrm; end;
+  if msg is distinct from 'The second factor is already off' then raise exception 'FAIL second factor: the same value was taken: %',msg; end if;
+  r:=okb.okb_set_second_factor('administrators','Rolled-back fixture');
+  execute 'reset role';
+  if r->>'second_factor'<>'administrators' or r->>'was'<>'off' or (select second_factor from okb_private.sign_in_setting)<>'administrators' then
+   raise exception 'FAIL second factor: an administrator with a code did not set it: %',r; end if;
+
+  -- The audit log gives the change to an administrator alone, and its row stays as it is.
+  execute 'set local role authenticated';
+  r:=okb.okb_get_audit(t0,clock_timestamp()+interval '1 minute');
+  execute 'reset role';
+  if not exists(select 1 from jsonb_array_elements(r->'items') e where e->>'event'='second_factor_set' and e->>'actor_id'=h::text
+    and e->>'old_value'='off' and e->>'new_value'='administrators' and e->>'reason'='Rolled-back fixture') then
+   raise exception 'FAIL second factor: the audit log does not give the change %',r; end if;
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',w,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  r:=okb.okb_get_audit(t0,clock_timestamp()+interval '1 minute');
+  execute 'reset role';
+  if exists(select 1 from jsonb_array_elements(r->'items') e where e->>'event'='second_factor_set') then
+   raise exception 'FAIL second factor: the audit log gives the change to a person who is not an administrator'; end if;
+  msg:=null;
+  begin update okb.sign_in_setting_change set reason='changed'; exception when sqlstate '23514' then msg:=sqlerrm; end;
+  if msg is null then raise exception 'FAIL second factor: a logged change was changed'; end if;
+  perform set_config('request.jwt.claims','{}',true);
+
+  raise exception using errcode='PHT38',message='Rollback second factor fixtures';
+ exception when sqlstate 'PHT38' then null;
+ end;
+end $factor$;
+
+-- The graph reader, off until the firm's own Anthropic API key is in the Vault. With no key the schedule calls
+-- nothing, whatever waits; with the key and no class in the glossary it calls nothing; with a class and a part
+-- waiting it calls graph-reader. okb_get_graph_reader says which, and gives an administrator alone the month's cost.
+-- The scopes it reads leave out private, sessions, Administration, Guides and plugin scopes. A read is fitted to the
+-- glossary: a type is written as the glossary writes its class, a relation keeps its relationship among its
+-- keywords, and each finding that fits none is dropped with its reason.
+create function okb_tests.suite_39_graph_reader() returns void language plpgsql set search_path = pg_catalog, public, extensions, okb, okb_private, okb_storage, storage, auth, file_search, okb_tests as $graph$
+declare h uuid:=gen_random_uuid(); w uuid:=gen_random_uuid(); sc uuid:=gen_random_uuid(); v uuid; r jsonb; f jsonb; due boolean;
+begin
+ if to_regprocedure('file_search.graph_has_work(text[])') is null then
+  raise exception 'FAIL graph reader: run file-search.sql, with its graph reader, first'; end if;
+ begin
+  insert into auth.users(id) values(h),(w);
+  perform okb_tests.approve_fixture(null);
+  insert into okb.actor(actor_id,auth_user_id,display_name,actor_kind,accountable_human_id,authority_class,enabled)
+   values(h,h,'Graph test administrator','human',h,'administrator',true);
+  perform okb_tests.approve_fixture(h);
+  insert into okb.actor(actor_id,auth_user_id,display_name,actor_kind,accountable_human_id,authority_class,enabled)
+   values(w,w,'Graph test staff','human',w,'restricted',true);
+  perform set_config('okb.provisioning_actor','',true);
+  insert into okb.scope(scope_id,code,display_name,description,created_by) values(sc,'auth_test_graph','Graph test scope','Rolled-back fixture',h);
+  perform okb_private.provision_grant(h,gen_random_uuid(),w,sc,array['activity'],null,array['read'],null::timestamptz,'Rolled-back fixture');
+  -- The Vault as schedule.sql leaves it, and no key: the firm has not turned the reader on.
+  delete from vault.secrets where name='anthropic_api_key';
+  if not exists(select 1 from vault.secrets where name='file_search_project_url') then perform vault.create_secret('http://127.0.0.1:1','file_search_project_url','Rolled-back fixture'); end if;
+  if not exists(select 1 from vault.secrets where name='graph_reader_secret') then perform vault.create_secret('rolled-back','graph_reader_secret','Rolled-back fixture'); end if;
+  -- A part waiting in an ordinary scope.
+  insert into storage.objects(bucket_id,name,owner_id,metadata) values('auth_test_graph','part.md',h::text,'{"eTag":"g1"}');
+  select version_id into v from file_search.file_version where bucket_id='auth_test_graph' and name='part.md' and state='waiting';
+  perform file_search.record_file_text(v,'extracted','[{"ordinal":0,"place":"part 1","body":"Northfield supplies HT-01.","section":0}]'::jsonb,null,
+   '[{"ordinal":0,"place":"part 1","body":"Northfield supplies HT-01."}]'::jsonb);
+  if not ('auth_test_graph'=any(okb_private.graph_reader_buckets())) or exists(select 1 from okb.scope s where s.code=any(okb_private.graph_reader_buckets())
+     and (s.is_private or s.code in ('administration','guides','plugins') or s.code like 'sessions\_%' or s.code like 'plugins\_%')) then
+   raise exception 'FAIL graph reader: its scopes are %',okb_private.graph_reader_buckets(); end if;
+
+  -- Off: nothing is called, and okb_get_graph_reader says so, with no cost for a person who is not an administrator.
+  -- graph_reader_dispatch answers true only once it has called graph-reader.
+  due:=okb_private.graph_reader_dispatch();
+  if due then raise exception 'FAIL graph reader: with no key, the schedule called graph-reader'; end if;
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',w,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  r:=okb.okb_get_graph_reader();
+  execute 'reset role';
+  if (r->>'on')::boolean or not (r->'scopes') ? 'auth_test_graph' or r ? 'month_cost_usd' then
+   raise exception 'FAIL graph reader: okb_get_graph_reader with no key gave %',r; end if;
+
+  -- The key, and no class in the glossary: still nothing is called.
+  perform vault.create_secret('sk-ant-rolled-back','anthropic_api_key','Rolled-back fixture');
+  -- A new build's glossary has no class. On a project whose glossary has one, this check has nothing to show.
+  if not exists(select 1 from okb.glossary_term where kind='class') then
+   if okb_private.graph_reader_dispatch() then raise exception 'FAIL graph reader: with no class in the glossary, the schedule called graph-reader'; end if;
+  end if;
+
+  -- A class and a relationship: the schedule calls graph-reader, and okb_get_graph_reader says it is on, with the
+  -- month's cost for the administrator. The glossary's terms are kept in the Reference scope.
+  if not exists(select 1 from okb.scope where code='reference') then
+   insert into okb.scope(code,display_name,description,created_by) values('reference','Reference data','Rolled-back fixture',h);
+  end if;
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',h,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  perform pg_temp.raised(okb.okb_save_term('Graph test supplier','class','A firm that supplies another.','Graph test'));
+  perform pg_temp.raised(okb.okb_save_term('Graph test product','class','A thing the firm sells.','Graph test'));
+  perform pg_temp.raised(okb.okb_save_term('Graph test supplies','relationship','Supplies a product.','Graph test',
+   p_from_class=>'Graph test supplier',p_to_class=>'Graph test product'));
+  r:=okb.okb_get_graph_reader();
+  execute 'reset role';
+  if not (r->>'on')::boolean or not r ? 'month_cost_usd' or not r ? 'monthly_cap_usd' then
+   raise exception 'FAIL graph reader: okb_get_graph_reader with the key gave the administrator %',r; end if;
+  if not okb_private.graph_reader_dispatch() then raise exception 'FAIL graph reader: with the key, a class and a part waiting, the schedule did not call graph-reader'; end if;
+
+  -- A read fitted to the glossary.
+  f:=okb_private.fit_glossary(
+   '[{"name":"Northfield","type":"GRAPH TEST SUPPLIER","description":"Northfield supplies HT-01."},
+     {"name":"HT-01","type":"Graph test product","description":"HT-01 is a product."},
+     {"name":"Depot","type":"warehouse","description":"A depot."},
+     {"name":"northfield","type":"Graph test product","description":"Northfield again."}]'::jsonb,
+   '[{"source":"Northfield","target":"HT-01","relationship":"graph test supplies","keywords":["cartons"],"description":"Northfield supplies HT-01."},
+     {"source":"HT-01","target":"Northfield","relationship":"Graph test supplies","keywords":[],"description":"The wrong way round."},
+     {"source":"Northfield","target":"HT-01","relationship":"competes with","keywords":[],"description":"No such relationship."}]'::jsonb);
+  if f->'entities'->0->>'type'<>'Graph test supplier' or jsonb_array_length(f->'entities')<>3
+     or jsonb_array_length(f->'relations')<>1 or f->'relations'->0->'keywords'<>'["Graph test supplies","cartons"]'::jsonb
+     or (select array_agg(d->>'reason' order by d->>'reason') from jsonb_array_elements(f->'dropped') d)
+      <>array['A relation names no relationship in the glossary','A relation''s ends are not the classes its relationship joins','An entity''s type is not a class in the glossary'] then
+   raise exception 'FAIL graph reader: fit_glossary gave %',f; end if;
+  perform set_config('request.jwt.claims','{}',true);
+
+  raise exception using errcode='PHT39',message='Rollback graph reader fixtures';
+ exception when sqlstate 'PHT39' then null;
+ end;
+end $graph$;
+
+-- Private sessions: only an administrator makes a person's sessions private, with a reason; the administrator then
+-- sees the scope's name and owner and nothing in it; the person keeps their own grant alone, uploads and lists their
+-- sessions, and gives no other grant there; a private sessions scope is made only for the person its code names; and
+-- its owner alone makes it ordinary again. The audit log gives each change to the administrator and the person.
+create function okb_tests.suite_40_private_sessions() returns void language plpgsql set search_path = pg_catalog, public, extensions, okb, okb_private, okb_storage, storage, auth, file_search, okb_tests as $sessions$
+declare h uuid:=gen_random_uuid(); j uuid:=gen_random_uuid(); k uuid:=gen_random_uuid(); n0 uuid:=gen_random_uuid(); h2 uuid:=gen_random_uuid();
+ js text; ks text; sc uuid; old_g uuid; r jsonb; msg text; n bigint; t0 timestamptz:=clock_timestamp();
+begin
+ begin
+  insert into auth.users(id) values(h),(j),(k),(n0),(h2);
+  perform okb_tests.approve_fixture(null);
+  insert into okb.actor(actor_id,auth_user_id,display_name,actor_kind,accountable_human_id,authority_class,enabled)
+   values(h,h,'Sessions test administrator','human',h,'administrator',true);
+  perform okb_tests.approve_fixture(h);
+  insert into okb.actor(actor_id,auth_user_id,display_name,actor_kind,accountable_human_id,authority_class,enabled)
+   values(j,j,'Sessions test Josh','human',j,'restricted',true),(k,k,'Sessions test Kat','human',k,'restricted',true),
+    (n0,n0,'Sessions test nobody','human',n0,'restricted',true);
+  perform set_config('okb.provisioning_actor','',true);
+  js:='sessions_'||replace(j::text,'-',''); ks:='sessions_'||replace(k::text,'-','');
+  -- The person's sessions scope, as bootstrap.sql step 3e makes it.
+  insert into okb.scope(code,display_name,description,created_by) values(js,'Sessions test Josh''s sessions','Rolled-back fixture',h) returning scope_id into sc;
+  old_g:=(okb_private.provision_grant(h,gen_random_uuid(),j,sc,array['evidence'],null,array['read','create','edit','delete'],null::timestamptz,'Rolled-back fixture')->>'authorisation_id')::uuid;
+  insert into storage.objects(bucket_id,name,owner_id) values(js,'first-session.md',j::text);
+
+  -- Only a person who is an administrator makes a person's sessions private, with a reason.
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',j,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  msg:=null;
+  begin perform pg_temp.raised(okb.okb_make_sessions_private('Sessions test Josh','Rolled-back fixture')); exception when sqlstate '42501' then msg:=sqlerrm; end;
+  if msg is distinct from 'Only a person who is an administrator makes a person''s sessions private' then
+   raise exception 'FAIL private sessions: a restricted person made sessions private: %',msg; end if;
+  execute 'reset role';
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',h,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  msg:=null;
+  begin perform okb.okb_make_sessions_private('Sessions test Josh',' '); exception when sqlstate '22023' then msg:=sqlerrm; end;
+  if msg is distinct from 'Give the reason for making the sessions private, as p_reason' then raise exception 'FAIL private sessions: no reason was taken: %',msg; end if;
+  msg:=null;
+  begin perform okb.okb_make_sessions_private('Sessions test nobody','Rolled-back fixture'); exception when sqlstate '22023' then msg:=sqlerrm; end;
+  if msg is distinct from 'Sessions test nobody has no sessions scope. Make it as adding the person does' then
+   raise exception 'FAIL private sessions: a person with no sessions scope: %',msg; end if;
+  msg:=null;
+  begin perform okb.okb_make_sessions_private('Sessions test','Rolled-back fixture'); exception when sqlstate '22023' then msg:=sqlerrm; end;
+  if msg is null or msg not like 'More than one person fits%' then raise exception 'FAIL private sessions: words that fit several people: %',msg; end if;
+
+  r:=pg_temp.raised(okb.okb_make_sessions_private('Sessions test Josh','The firm asked'));
+  if r->>'scope_id'<>sc::text or r->>'is_private'<>'true' or r->>'owner_actor_id'<>j::text or r->>'grants_ended'<>'1' then
+   raise exception 'FAIL private sessions: the scope was not made private for its person: %',r; end if;
+  msg:=null;
+  begin perform okb.okb_make_sessions_private('Sessions test Josh','Rolled-back fixture'); exception when sqlstate '22023' then msg:=sqlerrm; end;
+  if msg is distinct from 'The scope Sessions test Josh''s sessions is already private' then raise exception 'FAIL private sessions: made private twice: %',msg; end if;
+
+  -- The administrator sees its name and owner, and nothing in it.
+  select x into r from jsonb_array_elements(okb.okb_get_scopes()->'items') x where x->>'scope_id'=sc::text;
+  if r->>'display_name'<>'Sessions test Josh''s sessions' or r->>'owner_name'<>'Sessions test Josh' or r->'description'<>'null'::jsonb then
+   raise exception 'FAIL private sessions: an administrator does not see the name and owner alone: %',r; end if;
+  select count(*) into n from storage.objects where bucket_id=js;
+  if n<>0 then raise exception 'FAIL private sessions: an administrator lists a session''s file'; end if;
+  msg:=null;
+  begin perform pg_temp.raised(okb.okb_make_sessions_ordinary('Rolled-back fixture')); exception when sqlstate '42501' then msg:=sqlerrm; end;
+  if msg is distinct from 'Only the owner of a private sessions scope makes it ordinary' then
+   raise exception 'FAIL private sessions: an administrator made the sessions ordinary: %',msg; end if;
+  if not exists(select 1 from jsonb_array_elements(okb.okb_get_audit(t0,clock_timestamp()+interval '1 minute')->'items') x
+   where x->>'event'='sessions_made_private' and x->>'scope_id'=sc::text and x->>'actor_id'=h::text and x->>'reason'='The firm asked') then
+   raise exception 'FAIL private sessions: the administrator''s audit log does not give the change'; end if;
+  execute 'reset role';
+  if okb_private.scope_read_for(h,sc,null,null) then raise exception 'FAIL private sessions: an administrator reads the scope'; end if;
+  if okb_private.authority_live(old_g) then raise exception 'FAIL private sessions: the grant the administrator gave is still live'; end if;
+  select count(*) into n from okb.authorisation z where z.scope_id=sc and z.revoked_at is null and z.issued_by_actor_id=j and z.executor_actor_id=j
+   and z.record_kinds=array['evidence'] and z.allowed_actions=array['read','create','edit','delete'] and okb_private.authority_live(z.authorisation_id);
+  if n<>1 or exists(select 1 from okb.authorisation z where z.scope_id=sc and z.revoked_at is null and z.issued_by_actor_id<>j) then
+   raise exception 'FAIL private sessions: the person does not hold one grant on evidence of their own'; end if;
+  msg:=null;
+  begin update okb.scope set is_private=false,owner_actor_id=null where scope_id=sc; exception when check_violation then msg:='refused'; end;
+  if msg is null then raise exception 'FAIL private sessions: the scope became ordinary outside its owner''s call'; end if;
+
+  -- Another person sees no change to Josh's sessions' privacy.
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',k,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  if exists(select 1 from jsonb_array_elements(okb.okb_get_audit(t0,clock_timestamp()+interval '1 minute')->'items') x where x->>'event' like 'sessions_made_%') then
+   raise exception 'FAIL private sessions: another person''s audit log gives the change'; end if;
+  execute 'reset role';
+
+  -- The person lists, uploads and replaces their sessions, as the upload hook does, from their own grant.
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',j,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  if not exists(select 1 from jsonb_array_elements(okb.okb_get_authorisations(j)->'items') z
+   where z->>'scope_id'=sc::text and z->>'mode'='standing_permission' and z->>'revoked_at' is null and (z->'allowed_actions') ? 'create') then
+   raise exception 'FAIL private sessions: the upload hook does not find the scope from the person''s grants'; end if;
+  insert into storage.objects(bucket_id,name,owner_id) values(js,'second-session.md',j::text);
+  get diagnostics n=row_count;
+  if n<>1 then raise exception 'FAIL private sessions: the person did not upload a session'; end if;
+  select count(*) into n from storage.objects where bucket_id=js;
+  if n<>2 then raise exception 'FAIL private sessions: the person lists % of their 2 sessions',n; end if;
+  -- The person gives no other grant there, so another person's uploads never land in it.
+  msg:=null;
+  begin perform pg_temp.raised(okb.okb_grant_permission(gen_random_uuid(),k,sc,array['evidence'],null,array['read','create'],null,'Rolled-back fixture'));
+  exception when sqlstate '42501' then msg:=sqlerrm; end;
+  if msg is distinct from 'A private sessions scope holds its person''s own grant alone' then
+   raise exception 'FAIL private sessions: the owner gave another person a grant in their sessions: %',msg; end if;
+  execute 'reset role';
+
+  -- A private sessions scope is made for the person its code names, and for no one else.
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',h,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  msg:=null;
+  begin perform okb.okb_add_scope(ks,'Sessions test Kat''s sessions','Rolled-back fixture','Rolled-back fixture',true,'Sessions test Josh'); exception when sqlstate '22023' then msg:=sqlerrm; end;
+  if msg is null or msg not like 'The code % is kept for OKB''s own scopes. A private sessions scope''s code is sessions_ and its owner''s Auth user id%' then
+   raise exception 'FAIL private sessions: a private sessions scope was made for another person: %',msg; end if;
+  r:=pg_temp.raised(okb.okb_add_scope(ks,'Sessions test Kat''s sessions','Rolled-back fixture','Rolled-back fixture',true,'Sessions test Kat'));
+  if r->>'is_private'<>'true' or r->>'owner_actor_id'<>k::text then raise exception 'FAIL private sessions: Kat''s scope: %',r; end if;
+  execute 'reset role';
+  if (select array[array_to_string(record_kinds,','),array_to_string(allowed_actions,','),issued_by_actor_id::text] from okb.authorisation
+   where authorisation_id=(r->>'owner_grant_id')::uuid)<>array['evidence','read,create,edit,delete',k::text] then
+   raise exception 'FAIL private sessions: a new private sessions scope does not open with the person''s grant on evidence'; end if;
+
+  -- Its owner makes it ordinary again, and the administrator who made it gives their grant.
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',j,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  r:=pg_temp.raised(okb.okb_make_sessions_ordinary('Josh asked'));
+  if r->>'is_private'<>'false' or r->>'owner_actor_id' is not null or r->>'issued_by'<>'Sessions test administrator' then
+   raise exception 'FAIL private sessions: the owner did not make it ordinary: %',r; end if;
+  msg:=null;
+  begin perform pg_temp.raised(okb.okb_make_sessions_ordinary('Rolled-back fixture')); exception when sqlstate '42501' then msg:=sqlerrm; end;
+  if msg is distinct from 'Only the owner of a private sessions scope makes it ordinary' then raise exception 'FAIL private sessions: made ordinary twice: %',msg; end if;
+  select count(*) into n from storage.objects where bucket_id=js;
+  if n<>2 then raise exception 'FAIL private sessions: the person lost their sessions when made ordinary'; end if;
+  execute 'reset role';
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',h,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  select count(*) into n from storage.objects where bucket_id=js;
+  if n<>2 then raise exception 'FAIL private sessions: an administrator does not read the ordinary scope'; end if;
+  if not exists(select 1 from jsonb_array_elements(okb.okb_get_audit(t0,clock_timestamp()+interval '1 minute')->'items') x
+   where x->>'event'='sessions_made_ordinary' and x->>'scope_id'=sc::text and x->>'actor_id'=j::text and x->>'reason'='Josh asked') then
+   raise exception 'FAIL private sessions: the audit log does not give the change back'; end if;
+  execute 'reset role';
+  if (select count(*) from okb.authorisation z where z.scope_id=sc and z.revoked_at is null and z.issued_by_actor_id=h and z.executor_actor_id=j
+   and okb_private.authority_live(z.authorisation_id))<>1 or exists(select 1 from okb.authorisation z where z.scope_id=sc and z.revoked_at is null and z.issued_by_actor_id=j) then
+   raise exception 'FAIL private sessions: the ordinary scope''s grant is not the administrator''s alone'; end if;
+  -- Kat makes hers ordinary after the administrator who made it is disabled, and another
+  -- administrator gives her grant.
+  perform set_config('request.jwt.claims','{}',true);
+  h2:=okb_private.provision_actor(h,h2,'Sessions test second administrator','human',null,'administrator',false);
+  perform okb_private.provision_actor_enabled(h2,h,false);
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',k,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  r:=pg_temp.raised(okb.okb_make_sessions_ordinary('Kat asked'));
+  execute 'reset role';
+  if r->>'is_private'<>'false' or not exists(select 1 from okb.authorisation z join okb.actor i on i.actor_id=z.issued_by_actor_id
+   where z.authorisation_id=(r->>'grant_id')::uuid and i.enabled and i.authority_class='administrator' and i.actor_id<>h) then
+   raise exception 'FAIL private sessions: with its administrator disabled, the owner did not make it ordinary: %',r; end if;
+  perform set_config('request.jwt.claims','{}',true);
+  raise exception using errcode='PHT40',message='Rollback private sessions fixtures';
+ exception when sqlstate 'PHT40' then null;
+ end;
+end $sessions$;
+
 -- The parts the checks run in, in order. Each part's suites finish in under 45 seconds: inside the
 -- business analyst agent's statement_timeout, and inside the Supabase SQL Editor's limit, which is
 -- over 70 seconds. Suite 23 runs in a part with only suite 35: its saves take longer as OKB grows.
@@ -4513,7 +4875,7 @@ create function okb_tests.part_list() returns table(part int, suites text[]) lan
   (3,array['suite_23_task_functions','suite_35_refusal_log']),
   (4,array['suite_24_record_move','suite_25_scope_rename','suite_26_own_records','suite_27_scope_delete',
    'suite_28_advisors','suite_29_owners','suite_31_links_through_state','suite_33_permission_checks','suite_34_private_scopes','suite_36_access_templates',
-   'suite_37_administration_and_plugin_scopes'])
+   'suite_37_administration_and_plugin_scopes','suite_38_second_factor','suite_39_graph_reader','suite_40_private_sessions'])
 $parts$;
 
 -- The number of parts, and each part's suites.
@@ -4584,4 +4946,4 @@ end $run$;
 
 revoke execute on all functions in schema okb_tests from public, anon, authenticated, service_role;
 
-comment on function okb_tests.run() is 'okb_tests 1.5.1';
+comment on function okb_tests.run() is 'okb_tests 1.11.0';

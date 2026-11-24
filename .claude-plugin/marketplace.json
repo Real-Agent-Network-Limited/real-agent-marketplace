@@ -5,12 +5,12 @@
   },
   "metadata": {
     "description": "Real Agent's plugins for estate agents: the Real Agent knowledge base each firm keeps in its own Supabase project, its organisational knowledge base (OKB), and the agents that work in it.",
-    "version": "1.6.0"
+    "version": "1.7.0"
   },
   "plugins": [
     {
       "name": "real-agent",
-      "description": "The database operator, every member of staff's agent for their firm's Real Agent knowledge base, the organisational knowledge base (OKB), with the skills every firm gets: adding staff, approving a model, getting started, updating plugins and support.",
+      "description": "The database operator, every member of staff's agent for their firm's Real Agent knowledge base, the organisational knowledge base (OKB), with the Dashboard button, which asks what is outstanding, and the skills every firm gets: adding staff, approving a model, getting started, ingesting from connectors, showing what is outstanding, updating plugins and support.",
       "source": "./plugins/real-agent"
     },
     {

@@ -1,0 +1,14 @@
+/* A deck's page of slides, after the print skill's deck.css: the brand's text, rules and accent on its paper, its fonts,
+   its logo above the title slide's headline and at the start of each slide's foot, and the accent along each foot. Every
+   value is a --brand- property. */
+:root {
+  --text: var(--brand-ink); --heading: var(--brand-ink); --text-secondary: var(--brand-muted);
+  --surface-1: var(--brand-surface); --border: var(--brand-rule); --border-strong: var(--brand-rule);
+  --accent: var(--brand-accent);
+  --sans: var(--brand-body-font);
+}
+html { background: var(--brand-paper); }
+h1, h2, h3 { font-family: var(--brand-heading-font); }
+footer.band { border-top: 2px solid var(--brand-accent); }
+section.slide.title > .brand-logo { display: block; align-self: flex-start; height: 64px; width: auto; max-width: 320px; object-fit: contain; margin: 0 0 32px; }
+footer.band .brand-logo { height: 20px; width: auto; max-width: 160px; object-fit: contain; margin-right: auto; }

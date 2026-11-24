@@ -5,7 +5,8 @@
 // gives what the session's folder holds, and `copy_to_agent_folder`. It also draws and prints pages from what the
 // database returns, on files directly inside the agent folder: `draw_graph`, `draw_search`, `draw_board`,
 // `draw_state_machine`, `state_machine_payload`, `draw_reference`, `draw_sop`, `report_page`, `print_pdf`,
-// `embed_pictures`, `create_workbook`, `edit_workbook`, `copy_samples` and `check_text`, from lib/pages.mjs. `run_code`, from
+// `embed_pictures`, `create_workbook`, `edit_workbook`, `copy_samples` and `check_text`, from lib/pages.mjs, in the
+// firm's brand where OKB holds its Brand record, from lib/brand.mjs. `run_code`, from
 // lib/code.mjs, runs Python or JavaScript on the agent folder's files, signed in or not.
 //
 // One folder works in one project, as one person. A session's folder that holds an actor file,
@@ -24,6 +25,7 @@ import { sessionFolderStatus } from "./lib/session-folder.mjs";
 import { createTools as databaseTools, TOOLS as DATABASE_TOOLS } from "./lib/tools.mjs";
 import { createTools as pageTools } from "./lib/pages.mjs";
 import { createCodeTool } from "./lib/code.mjs";
+import { readBrand } from "./lib/brand.mjs";
 
 const SERVER = { name: "okb", version: "0.1.0" };
 const DEFAULT_PROTOCOL = "2025-06-18";
@@ -51,8 +53,10 @@ const whisperSettings = { whisperCli: setting(env.SUPABASE_WHISPER_CLI), whisper
 // The session's folder, as Claude Code gives it, and the agent folder the settings name, for check_plugins.
 const sessionFolder = setting(process.env.SUPABASE_SESSION_FOLDER) ?? null;
 const agentFolders = [setting(process.env.SUPABASE_AGENT_FOLDER)];
-const pages = pageTools({ agentFolder });
 const database = plan.idle ? null : databaseTools({ ref, email, agentFolder, defaultSchema: SCHEMA, whisperSettings, sessionFolder, agentFolders });
+// The page tools read the firm's Brand record as the signed-in person each time they write a page. With no one
+// signed in, a page has the plain look.
+const pages = pageTools({ agentFolder, readBrand: database ? () => readBrand(database.call) : null });
 // With no one signed in, check_plugins still gives what the session's folder holds, so a disconnected folder is named.
 const CHECK_PLUGINS = DATABASE_TOOLS.find(t => t.name === "check_plugins");
 // run_code needs no sign-in for JavaScript, or for Python once this computer holds the runtime.

@@ -8,8 +8,9 @@
 -- okb_setup.staff_code, becomes the same actor with no sign-in yet, with okb_private.provision_invited_actor, and the
 -- template's grants, and their code's SHA-256 becomes their open invitation in okb_private.invitation, which okb-join
 -- spends; okb-join makes their sessions scope. Then each loose end okb-setup listed in okb_setup.open_task, such as
--- sending Real Agent a code its website did not take, is saved as an open task in Administration, assigned to the
--- owner, as the owner, in position order, each due a week on. One transaction: a failure keeps nothing.
+-- sending Real Agent a code its connector did not take, is saved as an open task in Administration, assigned to the
+-- owner, as the owner, in position order, each due a week on. Last, the plan "Knowledge gaps" is saved in General as the
+-- owner, owned by them. One transaction: a failure keeps nothing.
 do $$
 declare
  o record;
@@ -99,6 +100,13 @@ begin
    raise exception 'The open task "%" was not saved: %', t->>'title', coalesce(saved->>'problem', saved::text) using errcode = '22023';
   end if;
  end loop;
+ -- The knowledge gaps log: a plan in General, owned by the owner, that each question an agent could not answer joins as a task.
+ saved := okb.okb_add_record('general', 'activity', 'Knowledge gaps', 'The log of questions the firm''s agents could not answer.',
+  jsonb_build_object('activity_kind', 'plan',
+   'description', 'Each task is one question an agent could not answer from the knowledge base. It is assigned to the person who can get the answer, and completed once the answer is saved.'));
+ if saved->>'record_id' is null then
+  raise exception 'The plan "Knowledge gaps" was not saved: %', coalesce(saved->>'problem', saved::text) using errcode = '22023';
+ end if;
  execute 'reset role';
  perform set_config('request.jwt.claims', '', true);
 end $$;

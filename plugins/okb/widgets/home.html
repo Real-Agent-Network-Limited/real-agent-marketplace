@@ -1,0 +1,260 @@
+<style>
+.hc { container-type: inline-size; min-width: 0; display: grid; gap: 1rem; padding: 0.5rem 0; font-size: 14px; color: var(--brand-ink); }
+.hc * { box-sizing: border-box; }
+.hc-top { background: var(--brand-surface); border-left: 3px solid var(--brand-accent); padding: 16px 20px; }
+.hc-hello { margin: 0; font-weight: 700; font-size: clamp(24px, 8cqw, 44px); line-height: 1; overflow-wrap: anywhere; }
+.hc-day { margin: 8px 0 0; font-size: 16px; color: var(--brand-muted); }
+.hc-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.hc-stat { background: var(--brand-surface); padding: 14px 16px; }
+.hc-stat b { display: block; font-size: 40px; line-height: 1; font-weight: 700; }
+.hc-stat span { display: block; margin-top: 8px; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--brand-muted); }
+.hc-tabs { display: flex; flex-wrap: wrap; gap: 0 24px; border-bottom: 1px solid var(--brand-rule); margin-bottom: 12px; }
+.hc-tab { font: inherit; font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--brand-muted); background: none; border: 0; border-bottom: 3px solid transparent; margin-bottom: -1px; padding: 0 0 10px; cursor: pointer; }
+.hc-tab[aria-selected="true"] { color: var(--brand-ink); border-bottom-color: var(--brand-accent); }
+.hc-tab i { font-style: normal; background: var(--brand-surface); padding: 2px 7px; margin-left: 6px; }
+.hc-panel[hidden] { display: none; }
+.hc-rows { background: var(--brand-surface); padding: 4px 16px; max-height: 340px; overflow-y: auto; }
+.hc-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 16px; align-items: center; padding: 12px 0; border-top: 1px solid var(--brand-rule); }
+button.hc-row { width: 100%; font: inherit; color: inherit; text-align: left; background: none; border-width: 1px 0 0; border-style: solid; border-color: var(--brand-rule); cursor: pointer; }
+button.hc-row:first-child { border-top: 0; }
+.hc-row:first-child { border-top: 0; }
+.hc-row p { margin: 0; font-size: 15px; min-width: 0; overflow-wrap: anywhere; }
+.hc-row small { display: block; margin-top: 4px; font-size: 13px; color: var(--brand-muted); }
+.hc-tag { font-size: 12px; background: var(--brand-rule); padding: 4px 10px; white-space: nowrap; }
+.hc-tag.hot { background: var(--brand-accent); color: var(--brand-on-accent); }
+.hc-none { margin: 0; padding: 12px 0; color: var(--brand-muted); }
+.hc-line { margin: 0; overflow-wrap: anywhere; }
+.hc-refused { color: var(--color-text-danger, #b42318); }
+.hc-acts { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.hc-cta { font: inherit; font-size: 14px; color: var(--brand-ink); background: var(--brand-surface); border: 1px solid var(--brand-rule); border-radius: 0; padding: 8px 14px; cursor: pointer; }
+.hc-cta.main { background: var(--brand-accent); color: var(--brand-on-accent); border-color: var(--brand-accent); }
+.hc-cta:disabled { opacity: 0.5; cursor: default; }
+.hc-said:not(:empty) { margin-top: 12px; }
+.hc-form { display: grid; gap: 10px; background: var(--brand-surface); padding: 14px 16px; }
+.hc-form label { display: grid; gap: 4px; font-size: 13px; color: var(--brand-muted); }
+.hc-in { font: inherit; font-size: 14px; color: var(--brand-ink); background: transparent; border: 1px solid var(--brand-rule); border-radius: 0; padding: 8px 10px; width: 100%; }
+.hc-form .hc-cta { justify-self: start; }
+.hc-table { width: 100%; border-collapse: collapse; }
+.hc-table th { font-size: 12px; font-weight: 400; letter-spacing: 0.04em; text-transform: uppercase; color: var(--brand-muted); text-align: left; padding: 0 12px 8px 0; }
+.hc-table td { padding: 10px 12px 10px 0; border-top: 1px solid var(--brand-rule); vertical-align: top; overflow-wrap: anywhere; }
+.hc-link { font: inherit; color: inherit; background: none; border: 0; padding: 0; text-align: left; text-decoration: underline; cursor: pointer; }
+.hc-task-title { margin: 0; font-size: 18px; font-weight: 700; overflow-wrap: anywhere; }
+.hc-facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; }
+.hc-facts dt { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--brand-muted); }
+.hc-facts dd { margin: 0; overflow-wrap: anywhere; }
+@container (max-width: 480px) {
+  .hc-row { grid-template-columns: 1fr; }
+  .hc-row .hc-tag { justify-self: start; }
+}
+</style>
+<section class="hc" id="hc">
+  <div class="hc-top" data-brand-logo>
+    <p class="hc-hello" id="hc-title"></p>
+    <p class="hc-day" id="hc-day"></p>
+  </div>
+  <div class="hc-stats" id="hc-stats"></div>
+  <div>
+    <div class="hc-tabs" role="tablist" id="hc-tabs"></div>
+    <div id="hc-panels"><p class="hc-line" id="hc-reading">Loading…</p></div>
+  </div>
+</section>
+<script>
+// The home card's code. It reads the person's counts, tabs and rows with home_state, and draws them. The Tasks tab's
+// Create task is taskForm and View my tasks is listTasks. A task's row opens the task, and its buttons change its
+// state. Each tool call names the button pressed, for the usage row. The shell gives it callTool, tellAgent and
+// onNotice.
+var home = null, begun = false;
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+function textOf(r) { return (r && r.content || []).map(function (c) { return c.text || ""; }).join("\n"); }
+function line(text, refused) {
+  var p = document.getElementById("hc-panels");
+  p.innerHTML = '<p class="hc-line' + (refused ? " hc-refused" : "") + '"></p>';
+  p.firstChild.textContent = text;
+}
+function rowsOf(t, i) {
+  return t.rows.length ? t.rows.map(function (r) {
+    return '<button type="button" class="hc-row" data-tab="' + i + '" data-open="' + esc(r.record_id) + '"><p>' + esc(r.title) + "<small>" + esc(r.line) + "</small></p>" +
+      '<span class="hc-tag' + (r.hot ? " hot" : "") + '">' + esc(r.tag) + "</span></button>";
+  }).join("") : '<p class="hc-none">' + esc(t.none) + "</p>";
+}
+function drawCounts(h) {
+  document.getElementById("hc-title").textContent = h.title;
+  document.getElementById("hc-day").textContent = h.day;
+  document.getElementById("hc-stats").innerHTML = h.counts.map(function (c) {
+    return '<div class="hc-stat"><b>' + esc(c.n) + "</b><span>" + esc(c.name) + "</span></div>";
+  }).join("");
+}
+function drawHome(h) {
+  home = h;
+  drawCounts(h);
+  document.getElementById("hc-tabs").innerHTML = h.tabs.map(function (t, i) {
+    return '<button type="button" class="hc-tab" role="tab" data-tab="' + i + '">' + esc(t.name) + "<i>" + esc(t.count) + "</i></button>";
+  }).join("");
+  document.getElementById("hc-panels").innerHTML = h.tabs.map(function (t, i) {
+    var rows = rowsOf(t, i);
+    var acts = (t.buttons || []).map(function (b, k) {
+      return '<button type="button" class="hc-cta' + (k === 0 ? " main" : "") + '" data-tab="' + i + '" data-button="' + esc(b.key) + '">' + esc(b.name) + "</button>";
+    }).join("");
+    return '<div class="hc-panel" role="tabpanel" data-panel="' + i + '"><div class="hc-rows">' + rows + '</div><div class="hc-acts">' + acts + '</div><div class="hc-said"></div></div>';
+  }).join("");
+  showTab(0);
+}
+// After a save, the counts and each tab's rows are read again and drawn, and the open task or the saved sentence stays.
+function refresh() {
+  return callTool("home_state", {}).then(function (r) {
+    if (r.isError || !r.structuredContent) return;
+    var h = r.structuredContent;
+    home = h;
+    drawCounts(h);
+    h.tabs.forEach(function (t, i) {
+      var tab = document.querySelectorAll(".hc-tab")[i], rows = document.querySelector('.hc-panel[data-panel="' + i + '"] .hc-rows');
+      if (tab) tab.querySelector("i").textContent = String(t.count);
+      if (rows) rows.innerHTML = rowsOf(t, i);
+    });
+  }).catch(function () {});
+}
+// What the agent is told after a save: what happened, and the task's title quoted as data, never its other text.
+function told(what, t) { return "The person " + what + " on the home card, titled: " + JSON.stringify(String(t.title || "").slice(0, 200)) + "."; }
+function showTab(n) {
+  [].forEach.call(document.querySelectorAll(".hc-tab"), function (t, i) { t.setAttribute("aria-selected", String(i === n)); });
+  [].forEach.call(document.querySelectorAll(".hc-panel"), function (p, i) { p.hidden = i !== n; });
+}
+function box(tab) { return document.querySelector('.hc-panel[data-panel="' + tab + '"] .hc-said'); }
+function form(tab, html) { var b = box(tab); b.innerHTML = '<div class="hc-form">' + html + "</div>"; return b; }
+function out(tab, html) { var o = box(tab).querySelector(".hc-out"); if (o) o.innerHTML = html; }
+function refusal(text) { return '<p class="hc-line hc-refused">' + esc(text) + "</p>"; }
+function day(v) { if (!v) return ""; var d = new Date(String(v).slice(0, 10) + "T12:00:00Z"); return isNaN(d) ? String(v) : d.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" }).replace(",", ""); }
+var STATE = { pending: "Pending", in_progress: "In progress", paused: "Paused", completed: "Completed", cancelled: "Cancelled" };
+// The changes each state allows, as the records skill's section 4 sets them out: the button's key, its name, and the
+// state it saves.
+var MOVES = {
+  pending: [["start", "Start", "in_progress"], ["cancel", "Cancel", "cancelled"]],
+  in_progress: [["pause", "Pause", "paused"], ["mark-done", "Mark done", "completed"], ["cancel", "Cancel", "cancelled"]],
+  paused: [["resume", "Resume", "in_progress"], ["cancel", "Cancel", "cancelled"]],
+  completed: [["reopen", "Reopen", "in_progress"]],
+  cancelled: []
+};
+function press(tab, key) {
+  if (key === "tasks") return listTasks(tab);
+  if (key === "task_new") return taskForm(tab);
+}
+function listTasks(tab) {
+  form(tab, '<div class="hc-out"><p class="hc-line">Loading…</p></div>');
+  callTool("task_list", {}, "view-tasks").then(function (r) {
+    if (r.isError) return out(tab, refusal(textOf(r)));
+    var t = r.structuredContent.tasks;
+    out(tab, t.length ? '<table class="hc-table"><thead><tr><th>Task</th><th>Scope</th><th>Due</th><th></th></tr></thead><tbody>' + t.map(function (x) {
+      return '<tr><td><button type="button" class="hc-link" data-tab="' + tab + '" data-open="' + esc(x.record_id) + '">' + esc(x.title) + "</button></td><td>" + esc(x.scope) + "</td><td>" + esc(day(x.due)) + "</td><td>" +
+        (x.overdue ? "Overdue" : x.blocked ? "Blocked" : esc(STATE[x.state] || x.state)) + "</td></tr>";
+    }).join("") + "</tbody></table>" : '<p class="hc-line">No open tasks.</p>');
+  }).catch(function (e) { out(tab, refusal(e.message)); });
+}
+function taskForm(tab) {
+  var b = form(tab, '<label>Title <input class="hc-in" name="title" required maxlength="200"></label>' +
+    '<label>Description <textarea class="hc-in" name="description" rows="3" maxlength="2000"></textarea></label>' +
+    '<label>Assignee <input class="hc-in" name="assignee" placeholder="You"></label>' +
+    '<label>Finish date <input class="hc-in" name="finish" type="date"></label>' +
+    '<p class="hc-line hc-change"></p><button type="button" class="hc-cta main" data-go="1">Approve</button><div class="hc-out"></div>');
+  function values() { return { title: b.querySelector("[name=title]").value.trim(), description: b.querySelector("[name=description]").value.trim(), assignee: b.querySelector("[name=assignee]").value.trim(), finish: b.querySelector("[name=finish]").value }; }
+  function change() { var v = values(); b.querySelector(".hc-change").textContent = v.title ? "Saves the task “" + v.title + "” in General, for " + (v.assignee || "you") + (v.finish ? ", due " + day(v.finish) : "") + "." : ""; }
+  b.addEventListener("input", change);
+  b.querySelector("[data-go]").onclick = function () {
+    var v = values();
+    if (!v.title) return out(tab, refusal("Give the task a title."));
+    var args = { title: v.title };
+    if (v.description) args.description = v.description;
+    if (v.assignee) args.assignee = v.assignee;
+    if (v.finish) args.finish = v.finish;
+    var btn = this;
+    btn.disabled = true;
+    callTool("task_save", args, "create-task").then(function (r) {
+      if (r.isError) { btn.disabled = false; return out(tab, refusal(textOf(r))); }
+      out(tab, '<p class="hc-line">' + esc(textOf(r)) + "</p>");
+      tellAgent(told("made a task", r.structuredContent), { action: "task_save", record_id: r.structuredContent.record_id, title: r.structuredContent.title });
+      refresh();
+    }).catch(function (e) { btn.disabled = false; out(tab, refusal(e.message)); });
+  };
+}
+function openTask(tab, id) {
+  form(tab, '<div class="hc-out"><p class="hc-line">Loading…</p></div>');
+  callTool("task_open", { record_id: id }, "open-task").then(function (r) {
+    if (r.isError) return out(tab, refusal(textOf(r)));
+    drawTask(tab, r.structuredContent);
+  }).catch(function (e) { out(tab, refusal(e.message)); });
+}
+function drawTask(tab, t) {
+  var moves = MOVES[t.state] || [];
+  var b = form(tab, '<p class="hc-task-title">' + esc(t.title) + "</p>" +
+    '<dl class="hc-facts"><dt>Scope</dt><dd>' + esc(t.scope) + "</dd>" + (t.due ? "<dt>Due</dt><dd>" + esc(day(t.due)) + "</dd>" : "") +
+    "<dt>State</dt><dd class=\"hc-state\">" + esc(STATE[t.state] || t.state) + "</dd>" +
+    (t.description ? "<dt>Description</dt><dd>" + esc(t.description) + "</dd>" : "") +
+    "<dt>Done when</dt><dd>" + esc(t.completion_requirements) + "</dd></dl>" +
+    (moves.length ? '<div class="hc-acts">' + moves.map(function (m) { return '<button type="button" class="hc-cta" data-move="' + m[0] + '">' + esc(m[1]) + "</button>"; }).join("") + "</div>" : "") +
+    '<div class="hc-out"></div>');
+  [].forEach.call(b.querySelectorAll("[data-move]"), function (el) {
+    var m = moves.filter(function (x) { return x[0] === el.dataset.move; })[0];
+    el.onclick = function () { return m[0] === "mark-done" ? noteForm(tab, t, m) : m[0] === "cancel" ? cancelAsk(tab, t, m) : move(tab, t, m, null); };
+  });
+  return b;
+}
+// Mark done asks for the completion note before it saves.
+function noteForm(tab, t, m) {
+  out(tab, '<label>Completion note <textarea class="hc-in" name="note" rows="3" maxlength="2000"></textarea></label>' +
+    '<button type="button" class="hc-cta main" data-go="1">Mark done</button><div class="hc-noted"></div>');
+  var at = box(tab);
+  at.querySelector("[data-go]").onclick = function () {
+    var note = at.querySelector("[name=note]").value.trim();
+    if (!note) { at.querySelector(".hc-noted").innerHTML = refusal("Give the completion note: how the task was done."); return; }
+    move(tab, t, m, note);
+  };
+}
+// Cancel asks first, since a cancelled task cannot be reopened. Only Yes saves.
+function cancelAsk(tab, t, m) {
+  out(tab, '<p class="hc-line hc-ask">Cancel this task? It cannot be reopened.</p><div class="hc-acts"><button type="button" class="hc-cta main" data-yes="1">Yes</button>' +
+    '<button type="button" class="hc-cta" data-no="1">No</button></div>');
+  var at = box(tab);
+  at.querySelector("[data-yes]").onclick = function () { move(tab, t, m, null); };
+  at.querySelector("[data-no]").onclick = function () { out(tab, ""); };
+}
+function move(tab, t, m, note) {
+  var at = box(tab);
+  [].forEach.call(at.querySelectorAll("button"), function (x) { x.disabled = true; });
+  var args = { record_id: t.record_id, version_id: t.version_id, to: m[2] };
+  if (note) args.note = note;
+  callTool("task_state", args, m[0]).then(function (r) {
+    if (r.isError) {
+      [].forEach.call(at.querySelectorAll("button"), function (x) { x.disabled = false; });
+      var noted = at.querySelector(".hc-noted");
+      if (noted) noted.innerHTML = refusal(textOf(r)); else out(tab, refusal(textOf(r)));
+      return;
+    }
+    drawTask(tab, r.structuredContent);
+    out(tab, '<p class="hc-line">' + esc(textOf(r)) + "</p>");
+    tellAgent(told("saved a task as " + (STATE[r.structuredContent.state] || r.structuredContent.state), r.structuredContent),
+      { action: "task_state", record_id: r.structuredContent.record_id, title: r.structuredContent.title, state: r.structuredContent.state });
+    refresh();
+  }).catch(function (e) {
+    [].forEach.call(at.querySelectorAll("button"), function (x) { x.disabled = false; });
+    out(tab, refusal(e.message));
+  });
+}
+document.getElementById("hc").addEventListener("click", function (e) {
+  var el = e.target.closest && e.target.closest("button");
+  if (!el || !home) return;
+  if (el.classList.contains("hc-tab")) return showTab(Number(el.dataset.tab));
+  if (el.dataset.open) return openTask(Number(el.dataset.tab), el.dataset.open);
+  if (el.dataset.button) return press(Number(el.dataset.tab), el.dataset.button);
+});
+function load() {
+  callTool("home_state", {}).then(function (r) {
+    if (r.isError) return line(textOf(r), true);
+    drawHome(r.structuredContent);
+  }).catch(function (e) { line("Real Agent's connector could not load the card: " + e.message, true); });
+}
+function begin() { if (begun) return; begun = true; load(); }
+onNotice["ui/notifications/tool-input"] = function () { begin(); };
+onNotice["ui/notifications/tool-result"] = function (p) {
+  if (p.isError) return line(textOf(p), true);
+  begin();
+};
+</script>

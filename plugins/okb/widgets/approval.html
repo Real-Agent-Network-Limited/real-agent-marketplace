@@ -1,0 +1,147 @@
+<script type="application/json" id="widget-data">__WIDGET_DATA__</script>
+<script>
+// The approval card: one save, or a batch of up to 20, as the okb plugin's records skill, section 3 step 2, shows it.
+// Real Agent's connector adds its Yes and No, and gives the firm's name as data.business. An item may also be a call
+// of several saves, { call, shows }, which the connector draws from OKB as view: its title, its sentences, and each
+// record it changes, with the links it adds and removes.
+/** Each field's name as the card shows it. A field not here is shown in words from its name. */
+var FIELD_NAMES = {
+  title: "Title", description: "Description", state: "State", activity_kind: "Kind of activity", task_type: "Kind of task",
+  owner_actor_id: "Owner", owner_label: "Owner", assignee_actor_id: "Assigned to", external_references: "References", blockers: "Blockers",
+  completion_requirements: "Done when", completion_note: "Completion note", baseline_start_at: "Planned start", forecast_start_at: "Expected start",
+  baseline_finish_at: "Planned finish", forecast_finish_at: "Expected finish", summary: "Summary", source_reference: "Source",
+  source_date: "Source date", standing: "Standing", limitations: "Limitations", model_kind: "Kind of model", source_version: "Source version",
+  source_status: "Source status", graph: "Graph", question: "Question", alternatives: "Choices", decision: "Decision", rationale: "Why",
+  decided_on: "Decided on", index: "Index", file_sha256: "File checksum", scope: "Scope",
+};
+/** Coded values in words, by field. */
+var VALUE_NAMES = { model_kind: { observed_current: "How the work is done today", proposed_target: "A proposed design" } };
+var STATE_NAMES = { pending: "Pending", in_progress: "In progress", paused: "Paused", completed: "Completed", cancelled: "Cancelled" };
+// The fields whose values are OKB's own words, shown with a capital, such as task or wish. Every other value, a code or a
+// tag among them, is shown exactly as it is saved.
+var WORD_FIELDS = { activity_kind: true, task_type: true, index: true, standing: true };
+var has = function (o, k) { return Object.prototype.hasOwnProperty.call(o, k); };
+/** A field's name in words. A change's label names only a field the card has no name for, and the field's own name
+ * is shown under it, so a label never hides which field is saved. */
+function fieldName(c) {
+  if (has(FIELD_NAMES, c.field)) return esc(FIELD_NAMES[c.field]);
+  if (typeof c.label === "string" && c.label.trim()) return esc(c.label.replace(/\s+/g, " ").trim()) + '<br><span class="wk-old">' + esc(c.field) + "</span>";
+  var words = String(c.field).replace(/_actor_id$|_id$/, "").replace(/_/g, " ");
+  return esc(words.charAt(0).toUpperCase() + words.slice(1));
+}
+function isEmpty(v) { return v == null || v === "" || (Array.isArray(v) && !v.length); }
+/** A value in words: a list of references as one line each, such as "Team: Sales", and a state by its name. */
+function words(field, v) {
+  if (field === "graph" && v && typeof v === "object" && Array.isArray(v.nodes)) return graphWords(v);
+  if (has(VALUE_NAMES, field) && typeof v === "string" && has(VALUE_NAMES[field], v)) return VALUE_NAMES[field][v];
+  if (Array.isArray(v) && v.length && v.every(function (x) { return typeof x === "string"; })) return v.join("\n");
+  if (Array.isArray(v) && v.length && v.every(function (x) { return x && typeof x === "object" && typeof x.description === "string"; })) {
+    return v.map(function (x) { return x.description; }).join("\n");
+  }
+  if (Array.isArray(v) && v.every(function (x) { return x && typeof x === "object" && "label" in x && "reference" in x; })) {
+    // Each reference is one line: a line break inside one never makes a line of its own.
+    var one = function (t) { return String(t).replace(/\s+/g, " ").trim(); };
+    return v.map(function (x) { var l = one(x.label); return l.charAt(0).toUpperCase() + l.slice(1) + ": " + one(x.reference); }).join("\n");
+  }
+  if (field === "state" && typeof v === "string" && has(STATE_NAMES, v)) return STATE_NAMES[v];
+  if (has(WORD_FIELDS, field) && typeof v === "string" && /^[a-z]+(_[a-z]+)*$/.test(v)) { var w = v.replace(/_/g, " "); return w.charAt(0).toUpperCase() + w.slice(1); }
+  if (v === true) return "Yes";
+  if (v === false) return "No";
+  return typeof v === "string" ? v : JSON.stringify(v, null, 2);
+}
+/** A word of a code, such as related_machine, with a capital: Related machine. */
+function cap(code) { var w = String(code == null ? "" : code).replace(/_/g, " "); return w.charAt(0).toUpperCase() + w.slice(1); }
+/** A graph in words: how many items and connections, then each item by its kind and name, with a term's definition, and
+ * each connection from one item's name to another's. */
+function graphWords(g) {
+  var nodes = g.nodes || [], edges = Array.isArray(g.edges) ? g.edges : [], label = {};
+  nodes.forEach(function (n) { label[n && n.id] = n && (n.label || n.id); });
+  var lines = [nodes.length + (nodes.length === 1 ? " item, " : " items, ") + edges.length + (edges.length === 1 ? " connection" : " connections")];
+  nodes.forEach(function (n) {
+    var def = n && n.attributes && typeof n.attributes.definition === "string" ? ": " + n.attributes.definition : "";
+    lines.push(cap(n && n.type) + " " + (n && (n.label || n.id)) + def);
+  });
+  edges.forEach(function (e) { lines.push((label[e.source] || e.source) + " → " + (label[e.target] || e.target) + (e.type ? " (" + cap(e.type).toLowerCase() + ")" : "")); });
+  return lines.join("\n");
+}
+/** A field's value as the card shows it: a person's name for their id, with the id's start, or the value in words.
+ * A long one is in a block that opens and closes. */
+function shown(field, v, given) {
+  // Given text stands in for a person's id alone, with the id's start under it.
+  if (/_actor_id$/.test(field) && typeof given === "string" && given.trim() && typeof v === "string" && v) {
+    return '<span class="wk-value">' + esc(given.replace(/\s+/g, " ").trim()) + '</span><br><span class="wk-old">' + esc(v.slice(0, 8)) + "…</span>";
+  }
+  if (isEmpty(v)) return '<span class="wk-old">empty</span>';
+  var text = words(field, v);
+  if (text.length <= 160 && text.indexOf("\n") < 0) return '<span class="wk-value">' + esc(text) + "</span>";
+  if (text.length <= 400 && text.split("\n").length <= 6) return '<span class="wk-value">' + esc(text).replace(/\n/g, "<br>") + "</span>";
+  return "<details><summary>" + esc(text.replace(/\s+/g, " ").slice(0, 80)) + " … (" + esc(text.length) + ' characters)</summary><div class="wk-value">' + esc(text) + "</div></details>";
+}
+/** Whether a change leaves its field as it was: both empty, or the same value. */
+function same(c) { return (isEmpty(c.old) && isEmpty(c["new"])) || JSON.stringify(c.old) === JSON.stringify(c["new"]); }
+
+/** Whether a save makes a new record: the connector's card knows it from its request, any other card from new true. */
+function isNew(s) { return s.p_request ? s.p_request.expected_previous_version_id === null : s["new"] === true; }
+
+/** A list of links, each by its relation and its target's title. */
+function linkList(list) { return list.map(function (l) { return esc(l.relation) + " " + esc(l.target); }).join("<br>"); }
+
+/** One save: its scope, kind, title, record id and reason, each field it changes with its name in words, its lines with
+ * each SKU's thumbnail, its links, the links it adds or removes and any sentence more, and its deliverables where it
+ * gives them. A call's record has no links of its own here, only those it adds and removes. */
+function saveHtml(s) {
+  var kept = (s.changes || []).filter(function (c) { return !same(c); });
+  // A new record shows each field with its value alone. A change to a record the firm holds shows each value before and after it.
+  var fresh = isNew(s);
+  var changes = kept.map(function (c) {
+    return "<tr><td>" + fieldName(c) + "</td>" + (fresh ? "" : '<td class="wk-old">' + shown(c.field, c.old, c.old_shown) + "</td>") +
+      "<td>" + shown(c.field, c["new"], c.new_shown) + "</td></tr>";
+  }).join("");
+  var head = fresh ? "<tr><th>Field</th><th>Value</th></tr>" : "<tr><th>Field</th><th>Before</th><th>After</th></tr>";
+  var links = Array.isArray(s.links) ? '<p class="wk-sub">Links: ' + (s.links.length ? linkList(s.links) : "none") + "</p>" : "";
+  var added = (s.links_added || []).length ? '<p class="wk-sub">Links added: ' + linkList(s.links_added) + "</p>" : "";
+  var removed = (s.links_removed || []).length ? '<p class="wk-sub">Links removed: ' + linkList(s.links_removed) + "</p>" : "";
+  var notes = (s.notes || []).map(function (n) { return '<p class="wk-sub">' + esc(n) + "</p>"; }).join("");
+  var lines = (s.lines || []).map(function (l) {
+    return "<tr><td>" + named(l.image, esc(l.code)) + "</td><td>" + esc(l.name) + "</td><td>" + esc(l.quantity) + "</td></tr>";
+  }).join("");
+  var deliverables = Array.isArray(s.deliverables) ?
+    '<p class="wk-sub">Deliverables: ' + (s.deliverables.length ? s.deliverables.map(esc).join("<br>") : "none") + "</p>" : "";
+  var where = [s.scope, s.record_kind].filter(Boolean).map(esc).join(" · ") + (s.record_id ? " · record " + esc(s.record_id) : "");
+  return '<div class="wk-row">' + named(s.image, "<strong>" + esc(s.title) + "</strong>") + (where ? '<p class="wk-sub">' + where + "</p>" : "") +
+    (s.reason ? '<p class="wk-sub">Reason: ' + esc(s.reason) + "</p>" : "") +
+    (changes ? '<table class="wk-table"><thead>' + head + "</thead><tbody>" + changes + "</tbody></table>" : "") +
+    (lines ? '<table class="wk-table"><thead><tr><th>SKU</th><th>Product</th><th>Quantity</th></tr></thead><tbody>' + lines + "</tbody></table>" : "") +
+    links + added + removed + notes + deliverables + "</div>";
+}
+
+/** One call: OKB's title for it, the agent's words, OKB's sentences, and each record it changes. Before the connector
+ * has read it from OKB, or once it is done, the agent's words alone. */
+function callHtml(s) {
+  var v = s.view;
+  var said = (s.shows || []).map(function (x) { return '<p class="wk-sub">' + esc(x) + "</p>"; }).join("");
+  if (!v) return '<div class="wk-row">' + said + "</div>";
+  return '<div class="wk-row"><p><strong>' + esc(v.title) + "</strong></p>" + said +
+    (v.notes || []).map(function (n) { return "<p>" + esc(n) + "</p>"; }).join("") + "</div>" + (v.rows || []).map(saveHtml).join("");
+}
+
+/** The question the card asks, put last so it sits next to the buttons that answer it. */
+function question(data) {
+  var n = data.saves.length, biz = esc(data.business);
+  if (data.saves.some(function (s) { return s.call; })) return n > 1 ? "Make these " + esc(n) + " changes in " + biz + "?" : "Make this change in " + biz + "?";
+  var fresh = data.saves.every(isNew), changed = data.saves.every(function (s) { return !isNew(s); });
+  if (n > 1) return fresh || !changed ? "Save these " + esc(n) + " to " + biz + "?" : "Change these " + esc(n) + " in " + biz + "?";
+  return fresh ? "Save this to " + biz + "?" : "Change this in " + biz + "?";
+}
+
+/** The saves and calls, with a heading only for a batch, and the question last. A single save needs no heading: its own title leads it. */
+function draw(data) {
+  var n = data.saves.length;
+  var calls = data.saves.some(function (s) { return s.call; });
+  return "<section>" + (n > 1 ? "<h2>" + esc(n) + (calls ? " changes: " : " saves: ") + esc(data.title) + "</h2>" : "") +
+    data.saves.map(function (s) { return s.call ? callHtml(s) : saveHtml(s); }).join("") +
+    '<p class="wk-question"><strong>' + question(data) + "</strong></p></section>";
+}
+
+if (typeof document !== "undefined") start();
+</script>

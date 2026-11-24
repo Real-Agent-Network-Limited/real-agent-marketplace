@@ -5,9 +5,11 @@
 // Real Agent publishes each release of the client's plugins to the Plugins scope's bucket. sync lists
 // and downloads them signed in as the person: the sign-in --project and --email name, else the one the
 // current folder's actor file names, else the only one saved. It downloads the newest release newer than
-// the local copy's RELEASE, checks every file against the release's MANIFEST, and swaps the copy in only
-// when every file matches. A folder with no MANIFEST is a publish under way and is passed over; a release
-// that fails its check is reported and passed over, and the next older one is taken. It then reads every
+// the local copy's RELEASE, checks the release's MANIFEST.sig against Real Agent's keys and every file against the
+// release's MANIFEST, and swaps the copy in only when both hold. It unpacks a release's files from its release.zip, or
+// downloads each one for a release without one. A folder with no MANIFEST, or no MANIFEST.sig yet,
+// is a publish under way and is passed over; a release that fails its check, its signature included, is reported and
+// passed over, and the next older one is taken. It then reads every
 // workflow plugin scope, plugins_<workflow>, the person's grants reach, as okb_get_scopes lists them, and puts
 // the newest release of each into the copy at plugins/<name>, listed in the copy's marketplace.json. A release whose
 // plugin.json names another plugin is passed over, with its own line. A workflow plugin whose scope the person no
@@ -21,14 +23,17 @@
 // setting names the database admin, which the business analyst replaced, is moved to the business analyst, whose
 // plugin is installed when it is not.
 // It exits 0 when every step worked, or when the Plugins scope shows the person no release yet, and 1
-// when a step failed.
+// when a step failed. Once the copy is known, it writes the run's result beside it, <copy>.sync.json: when the run
+// started and ended, its exit code, the release it started from and the one it ended at or stopped on, the notes of
+// each release it installed, from the release's NOTES.md, and the line that says what stopped it. The okb plugin's
+// plugin-updates hook, which starts it in the background, reads that file to tell the person how the run ended.
 import process from "node:process";
 import { spawnSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { check, downloadRelease, isPluginScope, listReleases, MARKETPLACE_NAME, OWN_PLUGIN_NAMES, pluginScope, RELEASE_NAME, workflowPlugin } from "./releases.mjs";
+import { check, downloadRelease, isPluginScope, listReleases, MARKETPLACE_NAME, OWN_PLUGIN_NAMES, pluginScope, RELEASE_NAME, unfinished, workflowPlugin } from "./releases.mjs";
 import { callRpc } from "../mcp/lib/session.mjs";
 import { openAccess } from "./okb-session.mjs";
 import { ACTOR_FILE } from "../mcp/lib/actor-file.mjs";
@@ -96,21 +101,32 @@ export function removeFolder(folder, remove = rmSync) {
 export class SyncRunning extends Error {}
 
 /** Takes the lock beside the copy, `<local>.lock`, holding this run's process id, and frees it when the
- * run ends. A lock whose process has ended is taken over. Throws SyncRunning while another run holds it. */
-export function takeLock(local) {
+ * run ends. A lock whose process has ended is taken over, and one that names this run already, as the okb plugin's
+ * plugin-updates hook writes it for a run it starts, is kept. Throws SyncRunning while another run holds it. */
+/** How long a lock with no process id yet counts as a run starting, as the plugin-updates hook takes it. */
+export const CLAIMING_MS = 10_000;
+export function takeLock(local, pid = process.pid) {
   const lock = `${local}.lock`;
   mkdirSync(dirname(lock), { recursive: true });
+  const free = () => process.on("exit", () => { try { if (Number(readFileSync(lock, "utf8").trim()) === pid) rmSync(lock, { force: true }); } catch {} });
   for (let tries = 0; tries < 2; tries++) {
     try {
-      writeFileSync(lock, `${process.pid}\n`, { flag: "wx" });
-      process.on("exit", () => { try { rmSync(lock, { force: true }); } catch {} });
+      writeFileSync(lock, `${pid}\n`, { flag: "wx" });
+      free();
       return lock;
     } catch (err) {
       if (err.code !== "EEXIST") throw err;
-      const pid = Number(readFileSync(lock, "utf8").trim());
+      const held = readFileSync(lock, "utf8").trim();
+      if (Number(held) === pid) { free(); return lock; }
+      // A lock with no process id yet, made in the last CLAIMING_MS, is the plugin-updates hook starting a run: it takes
+      // the lock empty and writes the run's process id once it has started it.
+      let age = Infinity;
+      try { age = Date.now() - statSync(lock).mtimeMs; } catch {}
+      if (!/^[1-9][0-9]*$/.test(held) && age < CLAIMING_MS) throw new SyncRunning("Another okb sync is starting. Wait for it to finish, then run okb sync again if you need to.");
+      const other = Number(held);
       let running = false;
-      try { process.kill(pid, 0); running = Number.isInteger(pid) && pid > 0; } catch (e) { running = e.code === "EPERM"; }
-      if (running) throw new SyncRunning(`Another okb sync is still copying, as process ${pid}. Wait for it to finish, then run okb sync again if you need to.`);
+      try { process.kill(other, 0); running = Number.isInteger(other) && other > 0; } catch (e) { running = e.code === "EPERM"; }
+      if (running) throw new SyncRunning(`Another okb sync is still copying, as process ${other}. Wait for it to finish, then run okb sync again if you need to.`);
       rmSync(lock, { force: true });
     }
   }
@@ -161,29 +177,35 @@ export async function sync(access, local, { remove = folder => removeFolder(fold
   const failed = [];
   const incoming = `${local}.incoming`;
   for (const name of (await releases(access)).filter(name => name > from)) {
-    remove(incoming);
-    let problems;
-    try { problems = await downloadRelease(access, name, incoming); }
-    catch (err) { problems = [`downloading failed: ${err instanceof Error ? err.message : err}`]; }
-    if (problems.length) {
+    try {
       remove(incoming);
-      // A folder with no MANIFEST is a publish under way, or one that stopped, and is not a release.
-      if (!(problems.length === 1 && problems[0] === "MANIFEST missing")) failed.push([name, problems]);
-      continue;
+      let problems;
+      try { problems = await downloadRelease(access, name, incoming); }
+      catch (err) { problems = [`downloading failed: ${err instanceof Error ? err.message : err}`]; }
+      if (problems.length) {
+        remove(incoming);
+        // A folder with no MANIFEST or no signature yet is a publish under way, and is not a release.
+        if (!unfinished(problems)) failed.push([name, problems]);
+        continue;
+      }
+      writeFileSync(join(incoming, "RELEASE"), `${name}\n`);
+      if (existsSync(join(local, ".git"))) renameSync(join(local, ".git"), join(incoming, ".git"));
+      // The workflow plugins the copy held, so the next step puts each back, or says it is gone.
+      if (existsSync(join(local, WORKFLOWS_FILE))) cpSync(join(local, WORKFLOWS_FILE), join(incoming, WORKFLOWS_FILE));
+      const old = `${local}.old`;
+      remove(old);
+      const back = stepOutOf(local);
+      if (existsSync(local)) renameSync(local, old);
+      renameSync(incoming, local);
+      back?.();
+      let warning = null;
+      try { remove(old); } catch (err) { warning = err.message; }
+      return { from, to: name, failed, warning, steppedOut: Boolean(back) };
+    } catch (err) {
+      // The release the run stopped on goes into the run's result, so the plugin-updates hook starts no run for it again.
+      if (err && typeof err === "object" && !err.release) err.release = name;
+      throw err;
     }
-    writeFileSync(join(incoming, "RELEASE"), `${name}\n`);
-    if (existsSync(join(local, ".git"))) renameSync(join(local, ".git"), join(incoming, ".git"));
-    // The workflow plugins the copy held, so the next step puts each back, or says it is gone.
-    if (existsSync(join(local, WORKFLOWS_FILE))) cpSync(join(local, WORKFLOWS_FILE), join(incoming, WORKFLOWS_FILE));
-    const old = `${local}.old`;
-    remove(old);
-    const back = stepOutOf(local);
-    if (existsSync(local)) renameSync(local, old);
-    renameSync(incoming, local);
-    back?.();
-    let warning = null;
-    try { remove(old); } catch (err) { warning = err.message; }
-    return { from, to: name, failed, warning, steppedOut: Boolean(back) };
   }
   return { from, to: null, failed };
 }
@@ -254,7 +276,7 @@ export async function syncWorkflows(access, local, { remove = folder => removeFo
         const problems = await downloadRelease(access, release, into, scope);
         if (problems.length) {
           remove(into);
-          if (!(problems.length === 1 && problems[0] === "MANIFEST missing")) failed.push([scope, release, problems]);
+          if (!unfinished(problems)) failed.push([scope, release, problems]);
           continue;
         }
         const name = workflowPlugin(readFileSync(join(into, "MANIFEST"), "utf8"));
@@ -485,7 +507,7 @@ export function uploadFolderNotices(configDir, home = homedir()) {
 }
 
 // The agent the business analyst replaced, as an administrator's folder may still name it, and its replacement.
-export const OLD_ADMIN_AGENT = "real-agent:database-admin";
+export const OLD_ADMIN_AGENT = "kinetik:database-admin";
 export const ADMIN_AGENT = "business-analyst:business-analyst";
 
 /**
@@ -514,26 +536,78 @@ export function moveAdminFolders(home = homedir(), run = claude) {
   return lines;
 }
 
+/** The notes in folder's NOTES.md, as [{ release, lines }], or [] when it has none. A workflow plugin's release holds
+ * its NOTES.md in its own folder, plugins/<name>. */
+export function releaseNotes(folder, release) {
+  let text;
+  try { text = readFileSync(join(folder, "NOTES.md"), "utf8"); } catch { return []; }
+  const lines = text.split(/\r?\n/).map(line => line.replace(/^\s*[-*]\s+/, "").trim()).filter(Boolean);
+  return lines.length ? [{ release, lines }] : [];
+}
+
+/** The file beside the copy that holds the last run's result, which the okb plugin's plugin-updates hook reads. */
+export const resultFile = local => `${local}.sync.json`;
+
+/** Writes the run's result beside the copy: when it started and ended, its exit code, the release it started from and
+ * the one it ended at or stopped on, the notes of each release it installed, and the line that says what stopped it,
+ * with any command printed under it. */
+export function writeSyncResult(local, { started, code, from, release, notes = [], lines = [], ended = new Date().toISOString() }) {
+  // The line that says what stopped the run: the last one printed, passing over a command and "Then run okb sync
+  // again.", with each command printed under it.
+  const all = lines.map(String);
+  let at = all.length - 1;
+  while (at >= 0 && (!all[at].trim() || /^\s/.test(all[at]) || /^Then run okb sync again\.$/.test(all[at]))) at--;
+  let last = at >= 0 ? all[at] : "";
+  for (let i = at + 1; at >= 0 && i < all.length && /^\s+\S/.test(all[i]); i++) last += ` ${all[i].trim()}`;
+  writeFileSync(resultFile(local), `${JSON.stringify({ started, ended, code, from, release, notes, last }, null, 2)}\n`);
+}
+
 /**
  * The whole of okb sync. `say` prints a line. `run` runs a claude command, `open` opens the sign-in.
- * Returns the exit code: 0 when every step worked or no release is there yet, 1 when a step failed.
+ * Returns the exit code: 0 when every step worked or no release is there yet, 1 when a step failed. Once the copy is
+ * known, the run's result is written beside it, `<local>.sync.json`, for the okb plugin's plugin-updates hook.
  */
-export async function runSync(argv, { cwd = process.cwd(), home = homedir(), say = line => process.stdout.write(`${line}\n`), run = claude, open = openAccess,
-  configDir = process.env.CLAUDE_CONFIG_DIR || join(home, ".claude") } = {}) {
+export async function runSync(argv, { say = line => process.stdout.write(`${line}\n`), ...options } = {}) {
+  const started = new Date().toISOString();
+  const printed = [];
+  const state = { local: null, from: "", release: "", notes: [] };
+  const record = code => {
+    // A run the lock stopped changed nothing: the run holding the lock writes its own result.
+    if (state.locked) return;
+    if (!state.local || !existsSync(dirname(state.local))) return;
+    try { writeSyncResult(state.local, { started, code, from: state.from, release: state.release || state.from, notes: state.notes, lines: printed }); }
+    catch { /* the hook then tells nothing of this run */ }
+  };
+  let code;
+  try { code = await syncSteps(argv, { ...options, say: line => { printed.push(...String(line).split("\n")); say(line); } }, state); }
+  catch (err) { printed.push(...String(err instanceof Error ? err.message : err).split("\n")); record(1); throw err; }
+  record(code);
+  return code;
+}
+
+async function syncSteps(argv, { cwd = process.cwd(), home = homedir(), say, run = claude, open = openAccess,
+  configDir = process.env.CLAUDE_CONFIG_DIR || join(home, ".claude") }, state) {
   let options;
   try { options = parseSync(argv); } catch (err) { say(err.message); return 1; }
+  const known = local => { state.local = local; try { state.from = readFileSync(join(local, "RELEASE"), "utf8").trim(); } catch { state.from = ""; } };
+  if (options.project !== undefined) known(localCopy(options.project, options.into, home));
   if (!hasGit()) { say(GIT_MISSING.trimEnd()); return 1; }
   const session = await open({ project: options.project, email: options.email, cwd, home });
   if (!session.ok) { say(`${session.problem}\nThen run okb sync again.`); return 1; }
   const local = localCopy(session.ref, options.into, home);
+  known(local);
   let synced;
   try { takeLock(local); synced = await sync(session.access, local); }
   catch (err) {
     if (!(err instanceof StuckFolder || err instanceof SyncRunning || err instanceof InsideCopy) && !/^The releases in OKB could not be listed/.test(err?.message)) throw err;
+    if (err instanceof SyncRunning) state.locked = true;
+    if (err.release) state.release = err.release;
     say(`${err.message}${err instanceof SyncRunning || err instanceof InsideCopy ? "" : "\nThen run okb sync again."}`);
     return 1;
   }
   const { from, to, failed, warning } = synced;
+  state.release = to || from;
+  if (to) state.notes.push(...releaseNotes(local, to));
   if (warning) say(`The copy is updated, but its earlier version stays behind. ${warning}`);
   for (const [name, problems] of failed) say(`Release ${name} is incomplete in OKB, and was passed over:\n${problems.map(p => `  ${p}`).join("\n")}`);
   if (!to && !from && failed.length) {
@@ -555,7 +629,10 @@ export async function runSync(argv, { cwd = process.cwd(), home = homedir(), say
     say(`Release ${release ? `${release} ` : ""}in the ${scope} scope is incomplete, and was passed over:\n${problems.map(p => `  ${p}`).join("\n")}`);
   for (const [scope, release, reason] of workflows.passed)
     say(`Release ${release} in the ${scope} scope is passed over: ${reason}. Nothing from it is installed.`);
-  for (const [name, release, scope] of workflows.added) say(`Your copy holds ${name} from release ${release}, in the ${scope} scope.`);
+  for (const [name, release, scope] of workflows.added) {
+    say(`Your copy holds ${name} from release ${release}, in the ${scope} scope.`);
+    state.notes.push(...releaseNotes(join(local, "plugins", name), release));
+  }
   for (const [name, scope] of workflows.removed)
     say(`${name}: your grants no longer reach the ${scope} scope, so it is gone from your copy. Remove it with: claude plugin uninstall ${name}@${MARKETPLACE_NAME}`);
   try {

@@ -1,10 +1,11 @@
 """Builds an executive report's page from its Markdown, for print_pdf to print.
 
 Usage: python3 report_page.py <report.md> <report.html> --for=<audience> --by=<name> --read-at=<when>
-       --owner=<name>
+       --owner=<name> [--brand=<brand.json>]
 
 The page carries the report's header lines, and its style inlined from report.css, in the plain
-style. The figure blocks of the report skill's section 6 pass through as they are written.
+style. With --brand, the page takes the firm's brand, as the okb plugin writes it: its style
+after report.css, and its logo above the title. The figure blocks of the report skill's section 6 pass through as they are written.
 """
 import argparse
 import html
@@ -14,6 +15,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from md_page import convert, inline  # noqa: E402
+from a4 import brand_style, read_brand  # noqa: E402
 
 
 def main():
@@ -23,6 +25,7 @@ def main():
     ap.add_argument("--by", dest="author", required=True)
     ap.add_argument("--read-at", dest="read_at", required=True)
     ap.add_argument("--owner", required=True)
+    ap.add_argument("--brand", default="")
     args = ap.parse_args()
     if os.path.exists(args.out):
         sys.exit(f"{args.out} already exists. Name a new file; nothing is replaced.")
@@ -32,6 +35,7 @@ def main():
         sys.exit("the report has no title: start it with a '# ' heading")
     with open(os.path.join(HERE, "report.css"), encoding="utf-8") as f:
         css = f.read()
+    brand = read_brand(args.brand)
     page = f'''<!doctype html>
 <html lang="en-GB">
 <head>
@@ -40,11 +44,11 @@ def main():
 <title>{html.escape(title)}</title>
 <style>
 {css}
-</style>
+</style>{brand_style(brand)}
 </head>
 <body>
 <main>
-  <h1>{inline(title)}</h1>
+  {brand["logo"] if brand else ""}<h1>{inline(title)}</h1>
   <p class="meta"><strong>Prepared for:</strong> {html.escape(args.audience)}<br>
   <strong>Prepared by:</strong> {html.escape(args.author)}<br>
   <strong>Read from OKB (organisational knowledge base):</strong> {html.escape(args.read_at)}<br>
@@ -56,7 +60,7 @@ def main():
 '''
     with open(args.out, "w", encoding="utf-8", newline="\n") as f:
         f.write(page)
-    print(f"written {args.out}; {len(body)} blocks; plain style")
+    print(f"written {args.out}; {len(body)} blocks; {'brand' if brand else 'plain'} style")
 
 
 if __name__ == "__main__":

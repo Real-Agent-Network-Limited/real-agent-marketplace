@@ -8,16 +8,19 @@
 // sessions scope is the scope whose code starts sessions_ where the person themselves holds a live,
 // standing grant with create. An administrator sees the grants of every actor, so only a grant whose
 // executor is the signed-in actor counts. With no saved sign-in or no such grant, it ends with nothing
-// uploaded. Each failure is added to upload-problems.log in the sessions folder. Each copy uploaded is
-// noted, with its time, in .uploaded.json there, which session-history.mjs reads.
-import { appendFileSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+// uploaded. Each stop and each failure is added to upload-problems.log in the sessions folder, and the run then ends
+// with exit code 1. An upload or OKB call that fails on "fetch failed", "Too many connections", a 5xx answer or 429 is
+// tried again after 5 seconds, while the run has spent less than a minute waiting, and only the last try's problem is
+// logged. Each copy uploaded is noted, with its time, in .uploaded.json there, which session-history.mjs reads. The
+// file is changed under a lock, so two uploads that overlap each keep their change.
+import { appendFileSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { readActor } from "../mcp/lib/actor-file.mjs";
 import { accountEmail } from "../mcp/lib/session.mjs";
 import { createTools } from "../mcp/lib/tools.mjs";
-import { UPLOADED, uploaded } from "./session-copy.mjs";
+import { changeUploaded, UPLOADED } from "./session-copy.mjs";
 
 /** The okb plugin's id in Claude Code's settings. */
 const PLUGIN_ID = "okb@real-agent";
@@ -54,11 +57,7 @@ export function sessionsScope(grants, scopes, actorId, now = Date.now()) {
   return null;
 }
 
-function note(sessionsFolder, change) {
-  const list = uploaded(sessionsFolder);
-  change(list);
-  writeFileSync(join(sessionsFolder, UPLOADED), JSON.stringify(list, null, 1) + "\n");
-}
+const note = changeUploaded;
 
 const answer = content => JSON.parse(content.content[0].text);
 
@@ -82,21 +81,56 @@ async function all(tools, name, args = {}) {
   return items;
 }
 
-/** Uploads the copies named and purges the old names. Returns a list of problems. */
-export async function upload(sessionsFolder, which, names, tools = null) {
+// The waits before each try again of a call that failed for a passing reason, and the most a run waits in all, in
+// milliseconds.
+export const RETRY_WAITS = [5000], RETRY_BUDGET = 60000;
+const PASSING = /fetch failed|too many connections|too many requests|internal server error|bad gateway|service unavailable|gateway time-?out|\bHTTP (429|5\d\d)\b|^(429|5\d\d)\b/i;
+
+/** True for a problem that a later try can clear: no network, a full database, a 5xx answer or 429. */
+export const passing = problem => PASSING.test(String(problem ?? ""));
+
+/** The tools with each call tried again after each wait when it fails for a passing reason, while the waits of the
+ * whole run stay within the budget. The last try's answer is kept. */
+export function retrying(tools, waits = RETRY_WAITS, budget = RETRY_BUDGET, sleep = ms => new Promise(done => setTimeout(done, ms))) {
+  let spent = 0;
+  return {
+    ...tools,
+    async callTool(name, args) {
+      for (let attempt = 0; ; attempt++) {
+        let content, thrown;
+        try { content = await tools.callTool(name, args); } catch (err) { thrown = err; }
+        let problem;
+        if (thrown) problem = thrown instanceof Error ? thrown.message : String(thrown);
+        else { try { const out = answer(content); if (!out.ok) problem = out.problem; } catch { /* not an answer to read */ } }
+        if (problem === undefined || !passing(problem) || attempt >= waits.length || spent + waits[attempt] > budget) {
+          if (thrown) throw thrown;
+          return content;
+        }
+        spent += waits[attempt];
+        await sleep(waits[attempt]);
+      }
+    },
+  };
+}
+
+/** Uploads the copies named and purges the old names. Returns a list of problems, a stop among them. */
+export async function upload(sessionsFolder, which, names, tools = null, waits = RETRY_WAITS, budget = RETRY_BUDGET) {
   const problems = [];
   if (!tools) {
     const who = which === "actor" ? actorConnection(sessionsFolder) : connection();
-    if (!who) return problems;
+    if (!who) return [which === "actor"
+      ? `no sign-in: the actor file in ${dirname(sessionsFolder)} names no project and email`
+      : "no sign-in: the okb plugin's settings name no project and email"];
     tools = createTools({ ref: who.ref, email: who.email, agentFolder: sessionsFolder });
   }
+  tools = retrying(tools, waits, budget);
   let scope;
   try {
     const me = (await call(tools, "okb_get_actor"))?.actor_id;
     scope = sessionsScope(await all(tools, "okb_get_authorisations", { p_executor_id: me }), await all(tools, "okb_get_scopes"), me);
   }
   catch (err) { return [err instanceof Error ? err.message : String(err)]; }
-  if (!scope) return problems;
+  if (!scope) return ["no sessions scope: no grant of the person's own gives create in a scope whose code starts sessions_"];
   for (const name of names) {
     const old = name.startsWith("-");
     const file = old ? name.slice(1) : name;
@@ -104,10 +138,12 @@ export async function upload(sessionsFolder, which, names, tools = null) {
       ? answer(await tools.callTool("call_function", { name: "file-search-purge", body: { bucket: scope, file } }))
       : answer(await tools.callTool("upload_file", { bucket: scope, path: file, file: join(sessionsFolder, file), content_type: "text/markdown", overwrite: true }));
     if (!out.ok) { problems.push(`${file}: ${out.problem}`); continue; }
-    note(sessionsFolder, list => {
-      if (old) delete list[file];
-      else list[file] = statSync(join(sessionsFolder, file)).mtimeMs;
-    });
+    try {
+      note(sessionsFolder, list => {
+        if (old) delete list[file];
+        else list[file] = statSync(join(sessionsFolder, file)).mtimeMs;
+      });
+    } catch (err) { problems.push(`${file}: it went up, and ${UPLOADED} could not be written: ${err instanceof Error ? err.message : err}`); }
   }
   return problems;
 }
@@ -121,5 +157,6 @@ if (process.argv[1] && real(fileURLToPath(import.meta.url)) === real(process.arg
   if (problems.length) {
     const at = new Date().toISOString();
     try { appendFileSync(join(sessionsFolder, "upload-problems.log"), problems.map(p => `${at} ${p}\n`).join("")); } catch { /* nowhere to report it */ }
+    process.exitCode = 1;
   }
 }

@@ -1,0 +1,15 @@
+/* Real Agent's look, from brand/real-agent.md: one custom property for each colour and typeface. A card from Real Agent's
+   connector takes these where the firm has no Brand record. Each colour follows the card's colour scheme, which the
+   card takes from Claude's theme: the first in light, the second in dark. A card keeps the chat's own type. */
+:root {
+  --brand-ink: light-dark(#0E0E0E, #FAFAF8);
+  --brand-paper: light-dark(#FAFAF8, #0E0E0E);
+  --brand-surface: light-dark(#ECECE8, #1C1C1A);
+  --brand-muted: light-dark(#6B6B66, #A6A69E);
+  --brand-rule: light-dark(#DCDCD8, #2e2e2b);
+  --brand-accent: #CCFF00;
+  --brand-on-accent: #0E0E0E;
+  --brand-accent-text: light-dark(#4D6100, #CCFF00);
+  --brand-heading-font: var(--font-sans, system-ui, sans-serif);
+  --brand-body-font: var(--font-sans, system-ui, sans-serif);
+}

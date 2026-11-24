@@ -15,7 +15,7 @@
 # options given. okb setup makes the person's folder, %USERPROFILE%\real-agent unless --folder names another, signs in as
 # --email, and runs okb sync, which installs the firm's own release of its plugins in place of the public copy.
 #
-# --owner is the firm's owner's first run, before the firm has a Supabase project. okb setup --owner makes the folder
+# --owner is the firm's owner's first run, before the firm has a Supabase project. okb setup --owner --folder-only makes the folder
 # and names the business analyst, business-analyst:business-analyst, as its agent, and neither signs in nor runs
 # okb sync. It ends: "Start a new Code session on <folder>, and type: Set up Real Agent".
 #
@@ -71,6 +71,20 @@ $WhisperUrl = 'https://github.com/ggml-org/whisper.cpp/releases/download/b5454/w
 $WhisperSha256 = '6ba69e3482d7826214f90a6a9c84ca07782aec1e1d0c6a7c30c994fd5d816ccb'
 $ModelUrl = 'https://huggingface.co/ggerganov/whisper.cpp/resolve/5359861c739e955e79d9a303bcbc70fb988958b1/ggml-base.bin'
 $ModelSha256 = '60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe'
+
+# Real Agent needs Windows 10 version 1809, build 17763, or later: the oldest Windows that runs winget. Nothing is installed
+# on an older Windows, or on one whose build this cannot read.
+$MinWindowsBuild = 17763
+$WindowsBuild = 0
+try { $WindowsBuild = [int][Environment]::OSVersion.Version.Build } catch {}
+if ($WindowsBuild -le 0) {
+  Write-Host "install.ps1 could not read this computer's Windows build. Check that it runs Windows 10 version 1809 or later, in Settings, System, About, then run this line again."
+  exit 1
+}
+if ($WindowsBuild -lt $MinWindowsBuild) {
+  Write-Host "Real Agent needs Windows 10 version 1809 or later, and this computer has Windows build $WindowsBuild. Update Windows in Settings, Windows Update, then run this line again."
+  exit 1
+}
 
 $WhisperDir = Join-Path $env:LOCALAPPDATA 'okb\whisper'
 $WhisperCli = Join-Path $WhisperDir 'Release\whisper-cli.exe'
@@ -349,6 +363,9 @@ foreach ($option in $Options) {
     Write-Host "$Folder is already signed in, so your password stays as it is."
   } else { $Setup += $option }
 }
+# The owner's folder alone: the business analyst gives the owner okb setup --owner, which sets Real Agent up, once the
+# owner has a Supabase account.
+if ($Owner) { $Setup += '--folder-only' }
 $node = Find-Node26
 Write-Host 'Setting up your folder with okb setup.'
 & $node $Okb setup --folder $Folder @Setup

@@ -1,0 +1,4 @@
+# Each text file has Unix line endings when committed and when checked out, on every computer. Claude Code clones the
+# marketplace with Git, and Git for Windows otherwise gives every file Windows line endings, which change a release's
+# hashes and stop bash reading install.sh.
+* text=auto eol=lf

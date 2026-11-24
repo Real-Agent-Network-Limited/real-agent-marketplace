@@ -1,12 +1,13 @@
 """Write the glossary, with its classes and relationships, or the data dictionary, as an A4 page.
 
-Usage: python3 reference_page.py <reference.json> <page.html>
+Usage: python3 reference_page.py <reference.json> <page.html> [--brand=<brand.json>]
 
 The input is what okb_get_reference returns: {"part": "glossary", "rows": [...]} or
 {"part": "dictionary", "tables": [...], "columns": [...], "sources": [...]}. The page is printed from
 the rows as they stand, so it holds the current glossary or data dictionary. It sets @page to A4, for
 the print skill's print_pdf.py. Beside the page, the board skill's `page_check.py` writes its
-outline, and its picture where a Chromium browser is found.
+outline, and its picture where a Chromium browser is found. With --brand, the page takes the firm's
+brand, as the okb plugin writes it: its style after the page's own, and its logo above the title.
 """
 import os
 import sys
@@ -83,9 +84,13 @@ def dictionary(value):
 
 
 def main():
-    if len(sys.argv) != 3:
+    args = sys.argv[1:]
+    brand_path = next((a[len("--brand="):] for a in args if a.startswith("--brand=")), None)
+    args = [a for a in args if not a.startswith("--brand=")]
+    if len(args) != 2:
         raise SystemExit(__doc__)
-    source, page_path = sys.argv[1:]
+    source, page_path = args
+    brand = a4.read_brand(brand_path)
     value = a4.read(source)
     part = value.get("part") if isinstance(value, dict) else None
     if part == "glossary" and isinstance(value.get("rows"), list):
@@ -94,7 +99,7 @@ def main():
         title, body, lines, findings, counts = dictionary(value)
     else:
         raise SystemExit("the file is not okb_get_reference's result for the glossary or the dictionary; no page was written")
-    page = a4.page(title, body, "reference-data", {"part": part, "counts": counts})
+    page = a4.page(title, body, "reference-data", {"part": part, "counts": counts}, brand)
     with open(page_path, "w", encoding="utf-8", newline="\n") as out:
         out.write(page)
     page_check.write(page_path, lines + page_check.findings_lines(findings))

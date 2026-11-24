@@ -15,6 +15,14 @@ select vault.create_secret('https://<project reference>.supabase.co', 'file_sear
 -- Every minute, fail exhausted rows and call file-search-worker while any work waits.
 select cron.schedule('file-search-work', '* * * * *', 'select file_search.dispatch()');
 
+-- The graph reader's secret, which only the database and graph-reader read, and its schedule: every 15 minutes,
+-- call graph-reader while a batch is open, or, once the firm's own Anthropic API key is in the Vault, while a part
+-- waits and the month's cost is under the cap. Until an administrator sets that key, the call does nothing.
+select vault.create_secret(replace(gen_random_uuid()::text || gen_random_uuid()::text, '-', ''), 'graph_reader_secret',
+ 'Shared secret the schedule sends to the graph-reader hosted function')
+where not exists (select 1 from vault.decrypted_secrets where name = 'graph_reader_secret');
+select cron.schedule('graph-reader', '*/15 * * * *', 'select okb_private.graph_reader_dispatch()');
+
 -- Check: the job, and both secrets by name. The secrets' values are never shown.
-select jobname, schedule, active from cron.job where jobname = 'file-search-work';
-select name from vault.decrypted_secrets where name in ('file_search_worker_secret', 'file_search_project_url') order by name;
+select jobname, schedule, active from cron.job where jobname in ('file-search-work', 'graph-reader') order by jobname;
+select name from vault.decrypted_secrets where name in ('file_search_worker_secret', 'file_search_project_url', 'graph_reader_secret') order by name;

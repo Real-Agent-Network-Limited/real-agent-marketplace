@@ -5,9 +5,13 @@ description: Use when a person asks to update their plugins. Runs okb sync, whic
 
 # Plugins
 
-The firm's plugins come from its own organisational knowledge base (OKB), the firm's own Supabase project. Real Agent publishes each release of them to the Plugins scope: the `real-agent` and `okb` plugins, and each workflow plugin the firm has bought. A release counts only once every file in it matches its list, the release's `MANIFEST`.
+The firm's plugins come from its own organisational knowledge base (OKB), the firm's own Supabase project. Real Agent publishes each release of them to the Plugins scope: the `real-agent` and `okb` plugins, and each workflow plugin the firm has bought. A release counts only once it carries Real Agent's signature, `MANIFEST.sig`, and every file in it matches its list, the release's `MANIFEST`. Nobody at the firm can sign a release.
 
-`okb sync` brings this computer up to date, signed in as the person. It downloads the newest release and checks every file. A release that fails the check is passed over for the next older one. It keeps the release as a copy on this computer, and Claude Code installs from that copy as the `real-agent` marketplace. Then it updates each plugin installed from it. The person's first `okb sync` replaces the copy installed from Real Agent's public marketplace.
+`okb sync` brings this computer up to date, signed in as the person. It downloads the newest release and checks Real Agent's signature and every file. A release that fails the check is passed over for the next older one. It keeps the release as a copy on this computer, and Claude Code installs from that copy as the `real-agent` marketplace. Then it updates each plugin installed from it. The person's first `okb sync` replaces the copy installed from Real Agent's public marketplace.
+
+The plugins also update by themselves. The okb plugin's hook looks for a newer release when a Code session starts on the person's folder. Then it looks once an hour as they send messages. When one is there, it starts `okb sync` in the background and tells the person, with the release's notes: one line per change.
+
+At the next message after the update ends, it tells them how it ended. That is the release, or the line the update stopped on and the command to run by hand. It reads the firm's OKB only while the person's sign-in has more than five minutes left.
 
 This skill sets the order, the wording and the checks. It belongs to no one agent: any agent can run it. The okb plugin's `check_plugins` tool compares the installed plugins with the newest release, and changes nothing. Its `update_plugins` tool runs `okb sync` as the person signed in. It uses the `okb:writing` skill for what it tells the person.
 
@@ -52,6 +56,12 @@ With the agent, the person's own instruction replaces a rule of this skill, such
    - **The agent:** tells the person to start a new Code session on their folder, and to type the agent's name with `@` as before.
 
 **AI guided:** the agent gives the person the new session's first step, and waits for their approval.
+
+## When the hook speaks
+
+- **"A new release of your Real Agent plugins is installing in the background":** the update is under way. The agent runs no `update_plugins` alongside it. It answers questions about the release from the notes the hook gave. It tells the person to start a new Code session once the update ends.
+- **"Your Real Agent plugins are updated to release ...":** the update ended. The agent tells the person to start a new Code session on their folder to use the new versions.
+- **"The update ... stopped: ..." or "The last update ... stopped: ...":** the agent gives the person that line and the hook's command, to run in their folder. Then it follows "Problems" below for the line.
 
 ## Problems
 

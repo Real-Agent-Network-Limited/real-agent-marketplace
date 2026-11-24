@@ -1,0 +1,183 @@
+<style>
+.rc { display: grid; gap: 12px; padding: 6px 0 12px; font-size: 14px; line-height: 1.45; color: var(--brand-ink); }
+.rc * { box-sizing: border-box; }
+.rc button, .rc select, .rc input { font: inherit; color: inherit; }
+.rc-head { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: baseline; }
+.rc-head h2, .rc-head h3 { margin: 0; flex: 1 1 240px; overflow-wrap: anywhere; }
+.rc-head h2 { font-size: 16px; }
+.rc-head h3 { font-size: 15px; }
+.rc-sub { color: var(--brand-muted); font-size: 13px; }
+.rc-refused { color: var(--color-text-danger, #b42318); overflow-wrap: anywhere; }
+.rc-btn { padding: 3px 12px; border: 1px solid var(--brand-rule); border-radius: 0; background: transparent; cursor: pointer; }
+.rc-btn.main { background: var(--brand-accent); color: var(--brand-on-accent); border-color: var(--brand-accent); }
+.rc-btn:disabled { opacity: .5; cursor: default; }
+.rc-btn[hidden] { display: none; }
+.rc-filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.rc-filters label { display: grid; gap: 2px; font-size: 13px; color: var(--brand-muted); }
+.rc-filters select, .rc-filters input { padding: 3px 6px; border: 1px solid var(--brand-rule); border-radius: 0; background: transparent; min-width: 0; }
+.rc-filters input { width: min(240px, 100%); }
+.rc-list { display: grid; gap: 6px; }
+.rc-item { display: grid; gap: 2px; width: 100%; text-align: left; border: 1px solid var(--brand-rule); border-radius: 0; padding: 6px 10px; background: var(--brand-surface); cursor: pointer; min-width: 0; }
+.rc-item b { font-weight: 600; overflow-wrap: anywhere; }
+.rc-panel { border-left: 3px solid var(--brand-accent); padding: 10px 12px; background: var(--brand-surface); display: grid; gap: 6px; }
+.rc-panel[hidden] { display: none; }
+.rc-panel p { margin: 0; }
+.rc-table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; }
+.rc-table th, .rc-table td { text-align: left; vertical-align: top; padding: 3px 6px; border-top: 1px solid var(--brand-rule); overflow-wrap: anywhere; white-space: pre-wrap; }
+.rc-table th { width: 32%; font-weight: 500; color: var(--brand-muted); }
+.rc-links { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.rc-link { background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; text-align: left; }
+@media (max-width: 560px) { .rc-table th { width: 40%; } }
+</style>
+<section class="rc">
+  <div class="rc-head" data-brand-logo><h2>Records</h2><span class="rc-sub" id="rc-count"></span></div>
+  <form class="rc-filters" id="rc-filters">
+    <label>Kind <select id="rc-kind"><option value="">Any</option><option value="activity">Activity</option><option value="decision">Decision</option><option value="evidence">Evidence</option><option value="model">Model</option></select></label>
+    <label>Scope <select id="rc-scope"><option value="">Any</option></select></label>
+    <label>Title <input id="rc-title" type="search" placeholder="Words of the title"></label>
+    <button class="rc-btn main" id="rc-find" type="submit">Find</button>
+  </form>
+  <div class="rc-panel" id="rc-panel" hidden></div>
+  <div id="rc-body"><p class="rc-sub">Loading…</p></div>
+  <button class="rc-btn" id="rc-more" hidden>More</button>
+</section>
+<script>
+// The records card: the records the person may read, newest save first, 25 at a time, found with card_find_records by
+// kind, scope and words of the title. Each opens its fields and links in the panel, through card_record, and a link opens
+// the record it goes to. The shell gives it callTool and onNotice. Every value from OKB is escaped before it is drawn.
+
+function esc(v) {
+  return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
+}
+function $(id) { return document.getElementById(id); }
+function textOf(r) { return ((r && r.content) || []).map(function (c) { return c.text || ""; }).join(" "); }
+/** Runs one of the card's tools, and gives its data, or throws OKB's refusal. */
+function read(name, args, button) {
+  return callTool(name, args, button).then(function (r) {
+    if (!r || r.isError) throw new Error(textOf(r) || "Real Agent's connector gave nothing back.");
+    return r.structuredContent || {};
+  });
+}
+function failed(el, e) { el.innerHTML = '<p class="rc-refused">' + esc(e && e.message || e) + "</p>"; }
+
+// Every time the card shows is in UK time, wherever the card is open.
+function full(iso) {
+  return iso ? new Date(iso).toLocaleString("en-GB", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "Europe/London" }) : "";
+}
+var KINDS = { activity: "Activity", decision: "Decision", evidence: "Evidence", model: "Model" };
+var STATES = { pending: "Pending", in_progress: "In progress", paused: "Paused", completed: "Completed", cancelled: "Cancelled" };
+function counted(n, noun) { return n + " " + noun + (n === 1 ? "" : "s"); }
+/** A field's name as words: forecast_start_at as Forecast start at. */
+function words(k) { var t = String(k).replace(/_/g, " "); return t.charAt(0).toUpperCase() + t.slice(1); }
+
+/** A field's value as text a person reads: a time in UK time, a list one item a line, an object as JSON. An empty value,
+ * empty text, an empty list and an empty object each give "", so the field is left out. */
+function shown(k, v) {
+  if (v == null || v === "") return "";
+  if (typeof v === "object" && Object.keys(v).length === 0) return "";
+  if (k === "state") return STATES[v] || String(v);
+  if (typeof v === "string" && /_at$/.test(k) && !isNaN(Date.parse(v))) return full(v);
+  if (Array.isArray(v) && v.every(function (x) { return typeof x !== "object" || x === null; })) return v.join("\n");
+  if (typeof v === "object") return JSON.stringify(v, null, 1);
+  return String(v);
+}
+/** A table of the filled fields, each named in words. No table when none is filled. */
+function fieldsTable(fields) {
+  var rows = Object.keys(fields || {}).filter(function (k) { return shown(k, fields[k]) !== ""; });
+  if (!rows.length) return "";
+  return '<table class="rc-table"><tbody>' + rows.map(function (k) {
+    return "<tr><th>" + esc(words(k)) + "</th><td>" + esc(shown(k, fields[k])) + "</td></tr>";
+  }).join("") + "</tbody></table>";
+}
+
+/** A record as okb_show_record gives it: its title, kind, scope and version, its reason, its fields and its links. A
+ * model's graph is counted, not listed. Each link opens the record it goes to. */
+function recordHtml(r) {
+  var payload = Object.assign({}, r.payload || {});
+  var graph = payload.graph;
+  delete payload.graph;
+  var links = r.links || [];
+  return '<div class="rc-head"><h3 id="rc-record-title">' + esc(r.title) + '</h3><button class="rc-btn" data-close>Close</button></div>' +
+    '<p class="rc-sub">' + esc([KINDS[r.kind] || r.kind, r.scope_name, "version " + r.version_number, "saved " + full(r.saved_at)].filter(Boolean).join(" · ")) + "</p>" +
+    (r.reason ? "<p>" + esc(r.reason) + "</p>" : "") +
+    fieldsTable(payload) +
+    (graph ? '<p class="rc-sub">Its graph has ' + counted((graph.nodes || []).length, "node") + " and " + counted((graph.edges || []).length, "link") + ".</p>" : "") +
+    (links.length ? '<p class="rc-sub">Links</p><ul class="rc-links">' + links.map(function (l) {
+      return "<li>" + esc(words(l.relation)) + ' <button class="rc-link" data-open="' + esc(l.target_record_id) + '">' +
+        esc((l.target_index ? l.target_index + " " : "") + l.target_title) + "</button>" + (l.target_deleted ? " (deleted)" : "") + "</li>";
+    }).join("") + "</ul>" : "");
+}
+
+/** Opens a record in the panel, read now through card_record. Close hides the panel. */
+function openRecord(panel, id) {
+  panel.hidden = false;
+  panel.innerHTML = '<p class="rc-sub">Opening the record…</p>';
+  return read("card_record", { record: id }, "open").then(function (r) { panel.innerHTML = recordHtml(r); }, function (e) { failed(panel, e); });
+}
+/** A button with data-open opens its record in the panel, and Close closes the panel. */
+function wireRecords(container, panel) {
+  container.addEventListener("click", function (e) {
+    var t = e.target && e.target.closest ? e.target.closest("[data-open],[data-close]") : null;
+    if (!t) return;
+    if (t.hasAttribute("data-close")) { panel.hidden = true; panel.innerHTML = ""; return; }
+    openRecord(panel, t.getAttribute("data-open"));
+  });
+}
+
+// page is the last page read, with asked, the filters of the find it belongs to, so More reads on from that find even
+// when the form has changed since.
+var count = 0, page = null;
+
+function row(r) {
+  return '<button class="rc-item" data-open="' + esc(r.record_id) + '"><b>' + esc(r.title) + '</b><span class="rc-sub">' +
+    esc([KINDS[r.kind] || r.kind, r.scope_name, "version " + r.version_number, "saved " + full(r.saved_at) + (r.saved_by ? " by " + r.saved_by : "")].filter(Boolean).join(" · ")) +
+    "</span></button>";
+}
+function filters() { return { kind: $("rc-kind").value || undefined, scope: $("rc-scope").value || undefined, title: $("rc-title").value.trim() || undefined }; }
+function scopesInto(list, chosen) {
+  var select = $("rc-scope");
+  select.innerHTML = '<option value="">Any</option>' + list.map(function (s) {
+    return '<option value="' + esc(s.scope_id) + '">' + esc(s.name) + "</option>";
+  }).join("");
+  select.value = chosen || "";
+}
+/** Finds the first page for the filters, or, with more, the next page of the last find, with that find's own filters. */
+function find(more) {
+  var asked = more ? page.asked : filters(), body = $("rc-body");
+  var args = Object.assign({}, asked);
+  // A later page names its scope by the id the first page gave, and the card names each record's scope from the list
+  // the first page gave.
+  if (more) { args.cursor = page.next_cursor; args.cutoff = page.cutoff; args.scope = page.scope_id || undefined; } else body.innerHTML = '<p class="rc-sub">Loading…</p>';
+  $("rc-find").disabled = true;
+  return read("card_find_records", args, more ? "more" : "find").then(function (d) {
+    var scopes = more ? page.scopes : d.scopes || [];
+    page = Object.assign({}, d, { asked: asked, scopes: scopes });
+    if (!more) scopesInto(scopes, d.scope_id);
+    var names = {};
+    scopes.forEach(function (s) { names[s.scope_id] = s.name; });
+    d.items.forEach(function (r) { if (!r.scope_name) r.scope_name = names[r.scope_id] || null; });
+    if (!more) { body.innerHTML = '<div class="rc-list" id="rc-list"></div>'; count = 0; }
+    $("rc-list").insertAdjacentHTML("beforeend", d.items.map(row).join(""));
+    count += d.items.length;
+    if (!count) body.innerHTML = '<p class="rc-sub" id="rc-list">No record you can read matches.</p>';
+    $("rc-count").textContent = count ? count + (d.next_cursor ? " shown, more to read" : count === 1 ? " record" : " records") : "";
+    $("rc-more").hidden = !d.next_cursor;
+  }, function (e) { failed(body, e); }).then(function () { $("rc-find").disabled = false; });
+}
+
+$("rc-filters").addEventListener("submit", function (e) { e.preventDefault(); find(false); });
+$("rc-more").addEventListener("click", function () { find(true); });
+wireRecords($("rc-body"), $("rc-panel"));
+wireRecords($("rc-panel"), $("rc-panel"));
+var begun = false;
+onNotice["ui/notifications/tool-result"] = function (p) {
+  if (begun) return;
+  begun = true;
+  if (p.isError) { failed($("rc-body"), new Error(textOf(p))); return; }
+  var given = p.structuredContent || {};
+  if (given.kind) $("rc-kind").value = given.kind;
+  if (given.title) $("rc-title").value = given.title;
+  if (given.scope) $("rc-scope").innerHTML = '<option value="' + esc(given.scope) + '" selected>' + esc(given.scope) + "</option>";
+  find(false);
+};
+</script>

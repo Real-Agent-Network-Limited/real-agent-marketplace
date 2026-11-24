@@ -1,12 +1,12 @@
-# <The question this file answers, such as "How a viewing is booked">
+# <The question this file answers, such as "How an order is taken">
 
-- **Role:** <the role's title, such as Lettings Negotiator>
-- **Answers:** <the question, in full, such as "How does an applicant's enquiry become a booked viewing in Loop?">
+- **Role:** <the role's title, such as Customer Service Adviser>
+- **Answers:** <the question, in full, such as "How does a customer's enquiry become an order in HubSpot?">
 - **Status:** <current or intended>
 - **Owner:** <the file owner's full name and title>
 - **Last reviewed:** <date, such as 24 October 2026>
 
-<Two or three sentences: what the process is for, whom it serves, and what starts it. Name the role, such as "the lettings negotiator", in place of the person who holds it.>
+<Two or three sentences: what the process is for, whom it serves, and what starts it. Name the role, such as "the customer service adviser", in place of the person who holds it.>
 
 ## What starts it
 
@@ -46,10 +46,10 @@
 
 ## Writing the file
 
-- Write one process in one file, named after the question it answers, in lowercase words joined by hyphens, such as `how-a-viewing-is-booked.md`.
+- Write one process in one file, named after the question it answers, in lowercase words joined by hyphens, such as `how-an-order-is-taken.md`.
 - Write the facts as they work today, for a current role, or as they are meant to work, for an intended role. Mark anything that is changing.
-- Spell out each term and abbreviation the first time it appears, such as "assured shorthold tenancy (AST)", then use the short form.
-- Name each contact by role, full name and title, with a shared mailbox where one exists, such as "the lettings manager (Joanna Reyes)".
+- Spell out each term and abbreviation the first time it appears, such as "purchase order (PO)", then use the short form.
+- Name each contact by role, full name and title, with a shared mailbox where one exists, such as "the customer service manager (Joanna Reyes)".
 - Give a written version beside every chart, photo or screenshot.
 - Use the same name for the same thing everywhere.
 - Point to each fact OKB already holds, such as a record, a glossary term or another file, in place of copying it.

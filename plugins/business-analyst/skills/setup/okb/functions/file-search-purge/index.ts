@@ -13,14 +13,22 @@ const sql = postgres(Deno.env.get("SUPABASE_DB_URL")!, { max: 1, prepare: false,
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
+/** The level of a sign-in Supabase Auth has confirmed, from its token's aal claim: aal2 once the sign-in gave a code
+ * from an authenticator app, aal1 otherwise. OKB refuses an administrator's call at aal1 where its second factor
+ * setting says. */
+function levelOf(token: string): string {
+  try { return JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/"))).aal === "aal2" ? "aal2" : "aal1"; }
+  catch { return "aal1"; }
+}
+
 /** The signed-in user and their token, as Supabase Auth itself confirms, or null. */
-async function signedIn(req: Request): Promise<{ id: string; token: string; key: string } | null> {
+async function signedIn(req: Request): Promise<{ id: string; token: string; key: string; aal: string } | null> {
   const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
   const key = req.headers.get("apikey") ?? Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   if (!token) return null;
   const res = await fetch(`${PROJECT}/auth/v1/user`, { headers: { Authorization: `Bearer ${token}`, apikey: key } });
   const user = res.ok ? await res.json().catch(() => null) : null;
-  return typeof user?.id === "string" ? { id: user.id, token, key } : null;
+  return typeof user?.id === "string" ? { id: user.id, token, key, aal: levelOf(token) } : null;
 }
 
 Deno.serve(async (req) => {
@@ -36,7 +44,7 @@ Deno.serve(async (req) => {
   try {
     // The file, as the user sees it under the project's rules.
     const [found] = await sql.begin(async (tx) => {
-      await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: user.id, role: "authenticated" })}, true)`;
+      await tx`select set_config('request.jwt.claims', ${JSON.stringify({ sub: user.id, role: "authenticated", aal: user.aal })}, true)`;
       await tx`set local role authenticated`;
       return await tx`select id from storage.objects where bucket_id = ${bucket} and name = ${file}`;
     });

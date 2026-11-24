@@ -9,8 +9,8 @@ The glossary and the data dictionary are kept only in OKB, in the `reference` sc
 
 - The **glossary** says what the firm's words mean, for people and agents alike. Each row is a term with its kind, its definition and its other names, such as "memorandum of sale", other name "MoS".
   - A **term** is a word the firm uses.
-  - A **class** is a kind of thing records and the file search graph are about, such as vendor or property.
-  - A **relationship** names the classes at its two ends, from one class to the other, such as owns, from vendor to property.
+  - A **class** is a kind of thing records and the file search graph are about, such as customer or order.
+  - A **relationship** names the classes at its two ends, from one class to the other, such as places, from customer to order.
   - The classes and relationships are the firm's ontology. The file search graph takes its entity types from the classes and its relation names from the relationships, as the `okb:records` skill's section 18 says.
 - The **data dictionary** says where each fact is stored and in what form. Each **record kind** is linked to its glossary class, and has a meaning and its fields. Each **field** has a type, whether it is required, the glossary term it holds and its meaning. Each field names the systems it comes from, such as Loop, with the field's name there. A system is itself a glossary term.
 
@@ -128,7 +128,7 @@ From `okb_save_term`:
 
 From `okb_save_dictionary`:
 
-- **"A record kind's name is lower case letters, digits and underscores, starting with a letter":** such as `valuation`.
+- **"A record kind's name is lower case letters, digits and underscores, starting with a letter":** such as `quote`.
 - **"A record kind's meaning is 1 to 1000 characters":** write a meaning, or shorten it.
 - **"A record kind needs its glossary class, and "…" is not a class in the glossary":** propose and save the class first, as section 2 says.
 - **"The fields are a list of at most 200":** give the fields as a list, of at most 200.

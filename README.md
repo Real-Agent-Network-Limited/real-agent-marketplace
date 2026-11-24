@@ -17,13 +17,13 @@ The owner is the person at the firm who will own the Supabase account and become
 On macOS:
 
 ```sh
-cd ~ && curl -fsSLO https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.sh && bash install.sh Real-Agent-Network-Limited/real-agent-marketplace --owner
+cd ~ && curl -fsSLO https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.sh && echo "dbde66a7871e80a836c3d51ac9ca6b5075d25405af69f51ab32e344300bb5d6f  install.sh" | shasum -a 256 -c && bash install.sh Real-Agent-Network-Limited/real-agent-marketplace --owner
 ```
 
 On Windows:
 
 ```powershell
-cd ~; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.ps1 -OutFile install.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 Real-Agent-Network-Limited/real-agent-marketplace --owner
+cd ~; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.ps1 -OutFile install.ps1; if ((Get-FileHash install.ps1 -Algorithm SHA256).Hash -eq '3ac9db745a80b2073fb9885477319c453b5150756e5ef79a73090c08857cbeda') { powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 Real-Agent-Network-Limited/real-agent-marketplace --owner } else { Write-Error 'install.ps1 does not match its checksum, and was not run.' }
 ```
 
 The script installs the programs and the plugins, as section 3 says. It then makes the folder `real-agent` in your home folder, and makes the business analyst that folder's agent. It does not sign you in, since there is no project to sign in to yet. Give `--folder <folder>` for another folder, outside any Git repository.
@@ -34,7 +34,9 @@ It ends with "Start a new Code session on" the folder. Quit and reopen the Claud
 Set up Real Agent
 ```
 
-Before you type it, create a free account and a project at supabase.com, and connect Supabase in the Claude desktop app's connectors. The business analyst does the rest. It names your project and asks once whether to set up Real Agent there. After your yes, it builds everything itself, and asks you only to choose your own sign-in, typing your password into the sign-in's own prompt. It ends with a short summary. It never sees, asks for or types a password or a secret key.
+Before you type it, create a free account at supabase.com. The business analyst then gives you one command.
+
+Click Run on it, and paste a Supabase access token. Make it at supabase.com/dashboard/account/tokens: name it, choose the shortest expiry, choose Organization under Resource access, and keep Full access. The command asks your firm's name and which Supabase project to use, or creates one in London. It builds everything, and asks your name, email and a password you choose. It ends with a short summary. The business analyst never sees, asks for or types a password, a secret key or a token.
 
 ### 2. Each member of staff, after setup
 
@@ -46,13 +48,13 @@ Once setup has finished, the firm's administrator adds each member of staff with
 The command, with those values in place of the angle brackets, on macOS:
 
 ```sh
-cd ~ && curl -fsSLO https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.sh && bash install.sh Real-Agent-Network-Limited/real-agent-marketplace --email <email> --url <project address> --key <publishable key> --join
+cd ~ && curl -fsSLO https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.sh && echo "dbde66a7871e80a836c3d51ac9ca6b5075d25405af69f51ab32e344300bb5d6f  install.sh" | shasum -a 256 -c && bash install.sh Real-Agent-Network-Limited/real-agent-marketplace --email <email> --url <project address> --key <publishable key> --join
 ```
 
 On Windows:
 
 ```powershell
-cd ~; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.ps1 -OutFile install.ps1; powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 Real-Agent-Network-Limited/real-agent-marketplace --email <email> --url <project address> --key <publishable key> --join
+cd ~; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.ps1 -OutFile install.ps1; if ((Get-FileHash install.ps1 -Algorithm SHA256).Hash -eq '3ac9db745a80b2073fb9885477319c453b5150756e5ef79a73090c08857cbeda') { powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 Real-Agent-Network-Limited/real-agent-marketplace --email <email> --url <project address> --key <publishable key> --join } else { Write-Error 'install.ps1 does not match its checksum, and was not run.' }
 ```
 
 The script installs the programs and the plugins, then sets up the folder `real-agent` in your home folder with `okb setup`. The sign-in asks for your invitation code. Then it asks you to choose a password, twice. The password stays hidden as you type it, and goes only to your firm's Supabase project. Save it in your password manager. A wrong code, or one that has run out, is refused, and after five wrong tries the code stops working. Ask your administrator for a new one.

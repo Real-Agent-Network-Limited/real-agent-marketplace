@@ -1,0 +1,12 @@
+/* An executive report's page, after the print skill's report.css: the brand's text, rules and accent on white paper, its
+   fonts, and its logo above the title. Every value is a --brand- property. */
+:root {
+  --text: var(--brand-ink); --heading: var(--brand-ink); --text-secondary: var(--brand-muted); --text-muted: var(--brand-muted);
+  --surface-1: var(--brand-surface); --border: var(--brand-rule); --border-strong: var(--brand-rule);
+  --link: var(--brand-accent-text); --accent: var(--brand-accent);
+  --sans: var(--brand-body-font);
+}
+h1, h2, h3, h4 { font-family: var(--brand-heading-font); }
+h2 { border-bottom-color: var(--brand-accent); }
+.brand-logo { display: block; height: 12mm; width: auto; max-width: 60mm; object-fit: contain; margin: 0 0 5mm; }
+@media print { th, pre, blockquote { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }

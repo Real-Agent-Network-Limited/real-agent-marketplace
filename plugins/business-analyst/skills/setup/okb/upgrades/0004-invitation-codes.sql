@@ -1,5 +1,5 @@
 -- 0004-invitation-codes
--- base: 5c4f0a6
+-- base: new
 -- An administrator adds a person with a one-time invitation code instead of Supabase's invitation email, which needs
 -- a page for choosing a password and, for anyone outside the Supabase organisation, the project's own email server.
 -- The invitation table keeps each code as its SHA-256 alone, with its email, its actor, who invited them, its expiry,

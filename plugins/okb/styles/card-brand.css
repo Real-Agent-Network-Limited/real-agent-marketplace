@@ -1,0 +1,16 @@
+/* A card in the chat, over the widget kit: square corners, thin rules, the accent on the header's edge and the one
+   action, and the brand's logo at the header's start. Every value is a --brand- property. */
+:root {
+  --text-secondary: var(--brand-muted);
+  --border: var(--brand-rule);
+  --surface-1: var(--brand-surface);
+  --radius: 0;
+}
+body { font-family: var(--brand-body-font); }
+h1, h2, h3 { font-family: var(--brand-heading-font); }
+.wk-head { background: var(--brand-surface); color: var(--brand-ink); border-radius: 0; border-left: 3px solid var(--brand-accent); }
+.wk h2 { color: var(--brand-ink); }
+.wk-row { border-width: 1px; }
+.wk-answer button#wk-yes { background: var(--brand-accent); color: var(--brand-on-accent); border-color: var(--brand-accent); }
+.brand-logo { display: block; height: 24px; width: auto; max-width: 160px; object-fit: contain; margin: 0 0 8px; }
+.wk-head > .brand-logo { margin: 0; }

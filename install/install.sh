@@ -15,7 +15,7 @@
 # --folder names another, signs in as --email, and runs okb sync, which installs the firm's own release of its
 # plugins in place of the public copy.
 #
-# --owner is the firm's owner's first run, before the firm has a Supabase project. okb setup --owner makes the folder
+# --owner is the firm's owner's first run, before the firm has a Supabase project. okb setup --owner --folder-only makes the folder
 # and names the business analyst, business-analyst:business-analyst, as its agent, and neither signs in nor runs
 # okb sync. It ends: "Start a new Code session on <folder>, and type: Set up Real Agent".
 #
@@ -196,11 +196,17 @@ model() {
 have_model() { model >/dev/null; }
 install_model() { fetch "$MODEL_URL" "$OWN_MODEL" "$MODEL_SHA256"; }
 
-# Real Agent needs macOS 14 or later: Homebrew has ready-built programs only for the macOS versions it supports, and
-# on an older Mac builds each from source, which takes hours and often fails. Nothing is installed on an older Mac.
-OLDEST_MACOS="${OLDEST_MACOS:-14}"
+# Real Agent needs macOS 15 or later: Homebrew ships a ready-built Poppler only from macOS 15, and on an older Mac
+# builds it from source, which takes hours and often fails. Nothing is installed on an older Mac, or on one whose
+# version sw_vers does not give.
+OLDEST_MACOS="${OLDEST_MACOS:-15}"
 macos="$(sw_vers -productVersion 2>/dev/null)"
-if [ "${macos%%.*}" -lt "$OLDEST_MACOS" ] 2>/dev/null; then
+case "${macos%%.*}" in
+  '' | *[!0-9]*)
+    echo "install.sh could not read this Mac's macOS version with sw_vers. Check that this Mac runs macOS $OLDEST_MACOS or later, in the Apple menu, About This Mac, then run this line again."
+    exit 1 ;;
+esac
+if [ "${macos%%.*}" -lt "$OLDEST_MACOS" ]; then
   echo "Real Agent needs macOS $OLDEST_MACOS or later, and this Mac has macOS $macos. Update macOS in System Settings, General, Software Update, then run this line again."
   exit 1
 fi
@@ -285,6 +291,9 @@ for a in ${args[@]+"${args[@]}"}; do
     setup+=("$a")
   fi
 done
+# The owner's folder alone: the business analyst gives the owner okb setup --owner, which sets Real Agent up, once the
+# owner has a Supabase account.
+if [ "$owner" = 1 ]; then setup+=("--folder-only"); fi
 echo "Setting up your folder with okb setup."
 # exec ends this shell without its exit trap, so the download folder goes first.
 cleanup; STAGE=""; trap - EXIT

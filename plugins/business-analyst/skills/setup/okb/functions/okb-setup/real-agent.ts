@@ -7,8 +7,8 @@
 // open task, "Add Real Agent", which the business analyst's invite_person completes later.
 export const STAFF: { name: string; email: string }[] = [{ name: "Support", email: "support@realagent.network" }];
 
-/** Real Agent's website, which takes each code okb-setup makes for Real Agent's staff, or null to send none. */
-export const ACCESS_URL: string | null = "https://agents.realagent.network/api/access";
+/** Real Agent's connector, which takes each code okb-setup makes for Real Agent's staff, or null to send none. */
+export const ACCESS_URL: string | null = "https://mcp.realagent.network/api/access";
 
 /** The address an owner writes to when setup fails before they can raise a support request, or null. */
 export const SUPPORT_EMAIL: string | null = "support@realagent.network";
