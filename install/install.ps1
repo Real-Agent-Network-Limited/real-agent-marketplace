@@ -10,8 +10,9 @@
 # It installs each program the okb plugin uses that is missing, with winget, and Node.js 26 with nodejs.org's
 # installer. It downloads whisper.cpp's whisper-bin-x64.zip and its model, ggml-base.bin, to %LOCALAPPDATA%\okb\whisper.
 # It prints one line for each: installed, already there, or failed with the command to run by hand. It refreshes its
-# own PATH after each install. It then adds the marketplace, installs the okb plugin with whisper.cpp's paths in its
-# settings, then the real-agent and business-analyst plugins, and runs the okb plugin's `okb.mjs setup` with the
+# own PATH after each install. It then adds the marketplace, or brings one already there up to date, installs the okb
+# plugin with whisper.cpp's paths in its settings, then the real-agent and business-analyst plugins, or updates each one
+# already there, and runs the okb plugin's `okb.mjs setup` with the
 # options given. okb setup makes the person's folder, %USERPROFILE%\real-agent unless --folder names another, signs in as
 # --email, and runs okb sync, which installs the firm's own release of its plugins in place of the public copy.
 #
@@ -329,8 +330,19 @@ if ($Failed | Where-Object { $_ -in @("Claude Code's command-line tool", 'Node.j
 }
 if ($Failed) { Write-Host "Install each program that failed with its command, later. The log is $Log." }
 
-$Missing["Real Agent's marketplace"] = -not (Find-MarketplaceFolder)
-Install-Program "Real Agent's marketplace" { [bool](Find-MarketplaceFolder) } { & claude plugin marketplace add $Marketplace } "claude plugin marketplace add $Marketplace"
+# A marketplace already there is brought up to date first, so the okb setup run below, and each plugin, are the newest.
+if (Find-MarketplaceFolder) {
+  & claude plugin marketplace update $MarketplaceName *>&1 | ForEach-Object { Write-Log "$_" }
+  if ($LASTEXITCODE -eq 0) { Write-Host "Real Agent's marketplace: already there, brought up to date" }
+  else {
+    Write-Host "Real Agent's marketplace: already there, but not brought up to date. Run it by hand: claude plugin marketplace update $MarketplaceName"
+    Write-Host "Then run this again. The log is $Log."
+    exit 1
+  }
+} else {
+  $Missing["Real Agent's marketplace"] = $true
+  Install-Program "Real Agent's marketplace" { [bool](Find-MarketplaceFolder) } { & claude plugin marketplace add $Marketplace } "claude plugin marketplace add $Marketplace"
+}
 if ($Failed -contains "Real Agent's marketplace") {
   Write-Host "The plugins come from Real Agent's marketplace. Check its address with Real Agent, then run this again. The log is $Log."
   exit 1
@@ -342,7 +354,17 @@ if ((Test-Path $WhisperCli) -and (Test-Path $Model)) {
 }
 foreach ($plugin in $Plugins) {
   $label = "The $plugin plugin"
-  $Missing[$label] = -not (Test-Plugin $plugin)
+  # A plugin already there is updated from the marketplace.
+  if (Test-Plugin $plugin) {
+    & claude plugin update "$plugin@$MarketplaceName" *>&1 | ForEach-Object { Write-Log "$_" }
+    if ($LASTEXITCODE -eq 0) { Write-Host "${label}: already there, brought up to date" }
+    else {
+      Write-Host "${label}: already there, but not brought up to date. Run it by hand: claude plugin update $plugin@$MarketplaceName"
+      $script:Failed += $label
+    }
+    continue
+  }
+  $Missing[$label] = $true
   Install-Program $label ([scriptblock]::Create("Test-Plugin '$plugin'")) ([scriptblock]::Create("& claude plugin install '$plugin@$MarketplaceName'")) "claude plugin install $plugin@$MarketplaceName"
 }
 if ($Failed | Where-Object { $_ -like 'The * plugin' }) {

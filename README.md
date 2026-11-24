@@ -17,13 +17,13 @@ The owner is the person at the firm who will own the Supabase account and become
 On macOS:
 
 ```sh
-cd ~ && curl -fsSLO https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.sh && echo "dbde66a7871e80a836c3d51ac9ca6b5075d25405af69f51ab32e344300bb5d6f  install.sh" | shasum -a 256 -c && bash install.sh Real-Agent-Network-Limited/real-agent-marketplace --owner
+cd ~ && curl -fsSLO https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.sh && echo "f9ad5bb36a2567772883c173756e13b85e71fd16e1713ecd36287d7df6e68907  install.sh" | shasum -a 256 -c && bash install.sh Real-Agent-Network-Limited/real-agent-marketplace --owner
 ```
 
 On Windows:
 
 ```powershell
-cd ~; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.ps1 -OutFile install.ps1; if ((Get-FileHash install.ps1 -Algorithm SHA256).Hash -eq '3ac9db745a80b2073fb9885477319c453b5150756e5ef79a73090c08857cbeda') { powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 Real-Agent-Network-Limited/real-agent-marketplace --owner } else { Write-Error 'install.ps1 does not match its checksum, and was not run.' }
+cd ~; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.ps1 -OutFile install.ps1; if ((Get-FileHash install.ps1 -Algorithm SHA256).Hash -eq '3f1b270ad53808da6990e4734337434ecbea52549fb27724fc2521e18e8cf725') { powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 Real-Agent-Network-Limited/real-agent-marketplace --owner } else { Write-Error 'install.ps1 does not match its checksum, and was not run.' }
 ```
 
 The script installs the programs and the plugins, as section 3 says. It then makes the folder `real-agent` in your home folder, and makes the business analyst that folder's agent. It does not sign you in, since there is no project to sign in to yet. Give `--folder <folder>` for another folder, outside any Git repository.
@@ -48,13 +48,13 @@ Once setup has finished, the firm's administrator adds each member of staff with
 The command, with those values in place of the angle brackets, on macOS:
 
 ```sh
-cd ~ && curl -fsSLO https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.sh && echo "dbde66a7871e80a836c3d51ac9ca6b5075d25405af69f51ab32e344300bb5d6f  install.sh" | shasum -a 256 -c && bash install.sh Real-Agent-Network-Limited/real-agent-marketplace --email <email> --url <project address> --key <publishable key> --join
+cd ~ && curl -fsSLO https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.sh && echo "f9ad5bb36a2567772883c173756e13b85e71fd16e1713ecd36287d7df6e68907  install.sh" | shasum -a 256 -c && bash install.sh Real-Agent-Network-Limited/real-agent-marketplace --email <email> --url <project address> --key <publishable key> --join
 ```
 
 On Windows:
 
 ```powershell
-cd ~; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.ps1 -OutFile install.ps1; if ((Get-FileHash install.ps1 -Algorithm SHA256).Hash -eq '3ac9db745a80b2073fb9885477319c453b5150756e5ef79a73090c08857cbeda') { powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 Real-Agent-Network-Limited/real-agent-marketplace --email <email> --url <project address> --key <publishable key> --join } else { Write-Error 'install.ps1 does not match its checksum, and was not run.' }
+cd ~; Invoke-WebRequest -UseBasicParsing https://raw.githubusercontent.com/Real-Agent-Network-Limited/real-agent-marketplace/main/install/install.ps1 -OutFile install.ps1; if ((Get-FileHash install.ps1 -Algorithm SHA256).Hash -eq '3f1b270ad53808da6990e4734337434ecbea52549fb27724fc2521e18e8cf725') { powershell -NoProfile -ExecutionPolicy Bypass -File install.ps1 Real-Agent-Network-Limited/real-agent-marketplace --email <email> --url <project address> --key <publishable key> --join } else { Write-Error 'install.ps1 does not match its checksum, and was not run.' }
 ```
 
 The script installs the programs and the plugins, then sets up the folder `real-agent` in your home folder with `okb setup`. The sign-in asks for your invitation code. Then it asks you to choose a password, twice. The password stays hidden as you type it, and goes only to your firm's Supabase project. Save it in your password manager. A wrong code, or one that has run out, is refused, and after five wrong tries the code stops working. Ask your administrator for a new one.

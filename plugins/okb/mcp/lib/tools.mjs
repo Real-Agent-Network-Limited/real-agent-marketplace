@@ -35,8 +35,8 @@ export const PUBLIC_MARKETPLACE = "Real-Agent-Network-Limited/real-agent-marketp
 const RAW = `https://raw.githubusercontent.com/${PUBLIC_MARKETPLACE}/main/install`;
 // The SHA-256 of install/install.sh and install/install.ps1, which each install command checks before it runs the script.
 // scripts/pin-install.mjs writes them.
-const INSTALL_SH_SHA256 = "dbde66a7871e80a836c3d51ac9ca6b5075d25405af69f51ab32e344300bb5d6f";
-const INSTALL_PS1_SHA256 = "3ac9db745a80b2073fb9885477319c453b5150756e5ef79a73090c08857cbeda";
+const INSTALL_SH_SHA256 = "f9ad5bb36a2567772883c173756e13b85e71fd16e1713ecd36287d7df6e68907";
+const INSTALL_PS1_SHA256 = "3f1b270ad53808da6990e4734337434ecbea52549fb27724fc2521e18e8cf725";
 
 /** The agent an invited person's folder works with: the business analyst for an administrator, and otherwise none named,
  * so okb setup gives the database operator. */

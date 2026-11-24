@@ -10,7 +10,8 @@
 #
 # It installs Homebrew, then each program the okb plugin uses that is missing, with Homebrew, and Node.js 26 with
 # nodejs.org's installer. It prints one line for each: installed, already there, or failed with the command to run
-# by hand. It then adds the marketplace, installs the okb, real-agent and business-analyst plugins from it, and runs
+# by hand. It then adds the marketplace, or brings one already there up to date, installs the okb, real-agent and
+# business-analyst plugins from it, or updates each one already there, and runs
 # the okb plugin's `okb.mjs setup` with the options given. okb setup makes the person's folder, ~/real-agent unless
 # --folder names another, signs in as --email, and runs okb sync, which installs the firm's own release of its
 # plugins in place of the public copy.
@@ -249,7 +250,16 @@ marketplace_folder() {
 }
 have_marketplace() { [ -n "$(marketplace_folder)" ]; }
 add_marketplace() { claude plugin marketplace add "$MARKETPLACE"; }
-if ! program "Real Agent's marketplace" have_marketplace add_marketplace "claude plugin marketplace add $MARKETPLACE"; then
+# A marketplace already there is brought up to date first, so the okb setup run below, and each plugin, are the newest.
+if have_marketplace; then
+  if claude plugin marketplace update "$MARKETPLACE_NAME" >>"$LOG" 2>&1; then
+    say "Real Agent's marketplace" "already there, brought up to date"
+  else
+    say "Real Agent's marketplace" "already there, but not brought up to date. Run it by hand: claude plugin marketplace update $MARKETPLACE_NAME"
+    echo "Then run this again. The log is $LOG."
+    exit 1
+  fi
+elif ! program "Real Agent's marketplace" have_marketplace add_marketplace "claude plugin marketplace add $MARKETPLACE"; then
   echo "The plugins come from Real Agent's marketplace. Check its address with Real Agent, then run this again. The log is $LOG."
   exit 1
 fi
@@ -268,6 +278,16 @@ if have_whisper && [ "$(model)" = "$OWN_MODEL" ]; then
   claude plugin install "okb@$MARKETPLACE_NAME" "${config[@]}" >>"$LOG" 2>&1
 fi
 for plugin in $PLUGINS; do
+  # A plugin already there is updated from the marketplace.
+  if installed "$plugin"; then
+    if claude plugin update "$plugin@$MARKETPLACE_NAME" >>"$LOG" 2>&1; then
+      say "The $plugin plugin" "already there, brought up to date"
+    else
+      say "The $plugin plugin" "already there, but not brought up to date. Run it by hand: claude plugin update $plugin@$MARKETPLACE_NAME"
+      failed="$failed|The $plugin plugin"
+    fi
+    continue
+  fi
   eval "have_$plugin() { installed $plugin; }; install_$plugin() { claude plugin install $plugin@$MARKETPLACE_NAME; }"
   program "The $plugin plugin" "have_$plugin" "install_$plugin" "claude plugin install $plugin@$MARKETPLACE_NAME"
 done
