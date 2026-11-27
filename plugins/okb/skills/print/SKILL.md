@@ -1,6 +1,6 @@
 ---
 name: print
-description: Use when a person asks for the glossary, the data dictionary or an SOP for a routine as a PDF, or asks to print any document or a deck. The agent writes the glossary or data dictionary from OKB's current rows, or an SOP from the routine's approved model version, as an A4 page in the agent folder with the okb plugin's `draw_reference` or `draw_sop` tool. It writes any other document, such as a report, as a page itself. It prints the page with the okb plugin's `print_pdf` tool, to an A4 PDF or a deck's 16:9 slides, and checks the PDF before giving it.
+description: Use when a person asks for the glossary, the data dictionary or an SOP for a routine as a PDF, or asks to print any document or a deck. The agent writes the glossary or data dictionary from OKB's current rows, or an SOP from the routine's version in force, as an A4 page in the agent folder with the okb plugin's `draw_reference` or `draw_sop` tool. It writes any other document, such as a report, as a page itself. It prints the page with the okb plugin's `print_pdf` tool, to an A4 PDF or a deck's 16:9 slides, and checks the PDF before giving it.
 ---
 
 # Printing to PDF
@@ -8,7 +8,7 @@ description: Use when a person asks for the glossary, the data dictionary or an 
 A document becomes a PDF in two steps. First it is written as an HTML page in the agent folder, laid out for A4 paper. Then the okb plugin's `print_pdf` tool prints that page to a new PDF beside it, with Google Chrome, Chromium or Microsoft Edge.
 
 - The glossary and the data dictionary are written by the `draw_reference` tool, from the rows `okb_get_reference` returns, as section 1 says.
-- An SOP, a standard operating procedure, for one routine is written by the `draw_sop` tool, from the routine's approved model version, as section 2 says.
+- An SOP, a standard operating procedure, for one routine is written by the `draw_sop` tool, from the routine's version in force, as section 2 says.
 - Any other document, such as a proposal or a roadmap, is written by the agent as a page, as section 3 says.
 - An executive report is written in Markdown, and the okb plugin's `report_page` tool makes its page, as the real-agent-project plugin's `report` skill says. Its deck is a page of slides, which `print_pdf` prints with `size` `slide`.
 
@@ -51,7 +51,7 @@ The record's `graph` holds one node, `id` `brand`, `type` `brand`, `label` the f
 
 - `palette`: `light` and `dark`, each with `ink`, the text; `paper`, the page; `muted`, secondary text; `rule`, borders; `accent`, the logo's own colour; and `accent_text`, the accent deepened until it reads on `paper` at 4.5 to 1. Each is `#` and six hex digits.
 - `fonts`: `heading` and `body`, each with `family`, `source`, `google` or `system`, and `fallback`, such as `Georgia, serif`.
-- `logo`: `bucket` `general`, `path`, the logo's file in General, `alt`, the firm's name, and `data_address`, a PNG, JPEG, GIF or WebP copy at most 200 pixels across, as `data:image/png;base64,...`.
+- `logo`: `bucket` `general`, `path`, the logo's file in General, `alt`, the firm's name, and `data_address`, a PNG, JPEG, GIF or WebP copy at most 200 pixels across, as `data:image/png;base64,...`. Its `dark` is the logo for dark mode. It is needed only when the logo's text is dark, since black text barely shows on a card in dark mode. It holds `path`, `brand/logo-dark.png` in General, and `data_address`, by the same rules. A card in dark mode shows it in place of the logo. A card in light mode, a printed page and a deck show the logo. Without a logo, `dark` is left out.
 
 The record is saved as any other, with the `okb:records` skill, once the person approves it. A value that is not a colour, a font's name or a picture's data address is left out.
 
@@ -75,19 +75,19 @@ The glossary lists the firm's terms, its classes and its relationships, each wit
 
 1. **Agree the file names:** the reference file, such as `glossary.json`, the page, such as `glossary.html`, and the PDF, such as `glossary.pdf`. Each is a new file directly inside the agent folder. When a name is taken, add the next number to it.
    - **Person:** names the three files.
-   - **Agent:** proposes the names, and waits for the person's agreement.
+   - **The agent:** proposes the names, and waits for the person's agreement.
 2. **Read the rows into a file.**
    - **Person:** runs `okb okb_get_reference p_part=glossary result_file=glossary.json` in the agent folder, or `p_part=dictionary` for the data dictionary.
-   - **Agent:** calls `okb_get_reference` with `p_part` `glossary` or `dictionary`, and `result_file` set to the reference file's full path.
+   - **The agent:** calls `okb_get_reference` with `p_part` `glossary` or `dictionary`, and `result_file` set to the reference file's full path.
 3. **Write the page.**
    - **Person:** runs `okb draw_reference reference_file=glossary.json page_file=glossary.html`.
-   - **Agent:** calls `draw_reference` with `reference_file` and `page_file`, as full paths. The result gives the counts, such as terms, classes and relationships, or record kinds and fields.
+   - **The agent:** calls `draw_reference` with `reference_file` and `page_file`, as full paths. The result gives the counts, such as terms, classes and relationships, or record kinds and fields.
 4. **Check the outline and the picture.** The outline lists each class, relationship and term, or each record kind and its fields. An empty glossary or dictionary is a finding: it says the glossary holds no terms yet, or the dictionary no record kinds yet.
    - **Person:** reads `glossary.outline.md` and the picture `glossary.png`.
-   - **Agent:** checks the page as the `okb:board` skill's "Check the page before giving it" says. With an empty glossary or dictionary, it tells the person, and prints only if they still want it.
+   - **The agent:** checks the page as the `okb:board` skill's "Check the page before giving it" says. With an empty glossary or dictionary, it tells the person, and prints only if they still want it.
 5. **Print the page.**
    - **Person:** runs `okb print_pdf page_file=<full path>/glossary.html pdf_file=<full path>/glossary.pdf`.
-   - **Agent:** calls `print_pdf` with `page_file` and `pdf_file`, as full paths.
+   - **The agent:** calls `print_pdf` with `page_file` and `pdf_file`, as full paths.
 6. **Check the PDF and give it,** as section 4 says. The PDF's paper is A4, and its page count is in the result.
 - **Evidence:** the reference file, the page's counts and findings, and the PDF's path, page count and paper.
 
@@ -95,45 +95,45 @@ The glossary lists the firm's terms, its classes and its relationships, each wit
 
 ## 2. Print an SOP for one routine
 
-An SOP is printed from the routine's approved model version. It holds the routine's purpose, its trigger, each state with who does it, what they do, the tool and the checks, the handovers, the exceptions, the drawn state machine, and the glossary terms it uses.
+An SOP is printed from the routine's version in force, as the `okb:records` skill's "The routine in force" sets it out. Its first page names that version and the approval that put it in force. It holds the routine's purpose and its trigger. For each of its states it gives who does it, what they do, the tool, the checks and its run attributes. Then come the handovers, the exceptions, the drawn state machine, and the glossary terms it uses.
 
-A routine's **approved model version** is a `proposed_target` model version that a decision record links to with `supports`, where the decision is made: its `decision` text and its `decided_on` date are set. The person can also name the version.
+- **Responsible:** the agent, for the person who asked. The person must be able to read the routine's model and its decisions, and the `reference` scope.
 
-- **Responsible:** the agent, for the person who asked. The person must be able to read the routine's model and the `reference` scope.
-
-1. **Find the approved model version.**
-   - **Person:** names the routine, or the model version. Without the agent, they find the model with `okb okb_find_records p_kind=model p_title="<words of the routine's name>"`, and the decisions in its scope with `okb okb_find_records p_kind=decision p_scope_id=<scope id>`. They read each decision with `okb okb_get_record p_record_id=<decision record id>`, and take the one that is made and whose `links` hold a `supports` link to a `proposed_target` version of the model. That link's `target_version_id` is the approved version.
-   - **Agent:** follows `okb:records` section 2, as the person's line says. With no made decision supporting a `proposed_target` version, it asks the person to name the version, and does not guess.
-2. **Read the approved version into a file.**
-   - **Person:** when the approved version is the model's latest, runs `okb okb_get_record p_record_id=<model record id> result_file=<routine>-model.json`. When it is an older version, runs `okb okb_get_history p_record_id=<model record id> result_file=<routine>-model-history-1.json`, reading each next page while the reply has a `next_cursor`, until a page holds the version.
-   - **Agent:** calls `okb_get_record` with `result_file` set to a new file in the agent folder. When its `version`'s `version_id` is not the approved one, it calls `okb_get_history` instead, a new `result_file` for each page, until a page holds the approved version, and keeps that page as the model file.
+1. **Find the version in force.**
+   - **Person:** names the routine. Without the agent, they find the model with `okb okb_find_records p_kind=model p_title="<words of the routine's name>"`, then run `okb okb_routine_in_force p_model=<model record id> p_routine="<routine id or name>" result_file=<routine>-in-force.json`.
+   - **The agent:** finds the model as `okb:records` section 2 says, and calls `okb_routine_in_force` with `p_model`, `p_routine` and `result_file` set to a new file in the agent folder. When it names no routine, no version is in force, and the agent says so and prints nothing. When it names more than one, the agent asks which one.
+2. **Read the version in force into a file.**
+   - **Person:** runs `okb okb_get_record p_record_id=<model record id> p_cutoff=<its change_no> result_file=<routine>-model.json`.
+   - **The agent:** calls `okb_get_record` with `p_record_id`, the routine's `change_no` as `p_cutoff`, and `result_file` set to a new file in the agent folder.
 3. **Read the glossary into a file.**
    - **Person:** runs `okb okb_get_reference p_part=glossary result_file=glossary.json`.
-   - **Agent:** calls `okb_get_reference` with `p_part` `glossary` and `result_file` set to a new file.
+   - **The agent:** calls `okb_get_reference` with `p_part` `glossary` and `result_file` set to a new file.
 4. **Draw the state machine.** `draw_state_machine` writes the routine's state machine page and, beside it, its picture `<name>.png`. The SOP shows that picture.
-   - **Person:** runs `okb draw_state_machine record_file=<routine>-model.json page_file=<routine>-machine.html`. With a history page, they first copy the approved version, unchanged, into a new file of its own, and give that file as `record_file`. `draw_state_machine` takes a version on its own.
-   - **Agent:** calls `draw_state_machine` with the model file and a new `page_file`, as the `okb:graph` skill's section 3 says. With a history page, it first copies the approved version, unchanged, into a new file of its own, and gives that file. It checks that the result's `picture_file` is there. With no picture, it tells the person that Google Chrome, Chromium or Microsoft Edge is needed, and stops.
+   - **Person:** runs `okb draw_state_machine record_file=<routine>-model.json page_file=<routine>-machine.html`.
+   - **The agent:** calls `draw_state_machine` with the model file and a new `page_file`, as the `okb:graph` skill's section 3 says. It checks that the result's `picture_file` is there. With no picture, it tells the person that Google Chrome, Chromium or Microsoft Edge is needed, and stops.
 5. **Write the SOP page.**
-   - **Person:** runs `okb draw_sop record_file=<routine>-model.json glossary_file=glossary.json picture_file=<routine>-machine.png page_file=<routine>-sop.html`, adding `version_id=<approved version id>` when the model file is a page of `okb_get_history`.
-   - **Agent:** calls `draw_sop` with `record_file`, `glossary_file`, `picture_file` and a new `page_file`, as full paths, and `version_id` when `record_file` is a history page.
-6. **Check the outline and its findings.** The outline lists the purpose, the trigger, each state with who, the tool and the checks, the handovers, the exceptions, the state machine's picture and the terms the SOP uses. Its findings are:
+   - **Person:** runs `okb draw_sop record_file=<routine>-model.json in_force_file=<routine>-in-force.json glossary_file=glossary.json picture_file=<routine>-machine.png page_file=<routine>-sop.html`.
+   - **The agent:** calls `draw_sop` with `record_file`, `in_force_file`, `glossary_file`, `picture_file` and a new `page_file`, as full paths.
+6. **Check the outline and its findings.** The outline names the version in force and its approval. It lists the purpose, the trigger, and each state with who does it, the tool and the checks. It also lists the handovers, the exceptions, the state machine's picture and the terms the SOP uses. Its findings are:
    - a start or step state with no one named as doing it;
    - a state the model says nothing of, with no description of what is done;
    - a routine with no start state, so the SOP names no trigger.
    - **Person:** reads `<routine>-sop.outline.md`, with its findings at the end, and the picture `<routine>-sop.png`.
-   - **Agent:** checks the page as the `okb:board` skill's "Check the page before giving it" says. It gives the person each finding. A finding in the model is put right in a new version of the model, which needs its own approval before it is printed as the SOP.
+   - **The agent:** checks the page as the `okb:board` skill's "Check the page before giving it" says. It gives the person each finding. A finding in the model is put right in a new version of the model. It prints as the SOP once the routine's owner approves it.
 7. **Print the page.**
    - **Person:** runs `okb print_pdf page_file=<full path>/<routine>-sop.html pdf_file=<full path>/<routine>-sop.pdf`.
-   - **Agent:** calls `print_pdf` with `page_file` and `pdf_file`, as full paths.
+   - **The agent:** calls `print_pdf` with `page_file` and `pdf_file`, as full paths.
 8. **Check the PDF and give it,** as section 4 says. The result's `pictures` holds the state machine's picture.
-- **Evidence:** the decision record's `record_id` and `version_id`, the approved model version's `version_id`, the model and glossary files, the state machine page and its picture, the SOP's outline and findings, and the PDF's path, page count, paper and pictures.
+- **Evidence:** the approval's `record_id` and `version_id`, and the version in force's `version_id`. Then the model and glossary files, the state machine page and its picture, and the SOP's outline and findings. Then the PDF's path, page count, paper and pictures.
 
-**AI guided:** the agent gives the person the routine, its approved version and the decision that approved it before drawing, and waits for their approval. It gives the outline and findings before printing, and waits again.
+**AI guided:** before drawing, the agent gives the person the routine, its version in force and its approval, and waits for their approval. It gives the outline and findings before printing, and waits again.
 
 Refusals from `draw_sop`:
 
-- "the model file is a page of okb_get_history: name the approved version with version_id": give `version_id`.
-- "the model file holds version …, not …": the model file holds a different version. Read the approved one.
+- "no version of the routine is in force": no approval of the routine supports a version. The routine's owner approves one with the `real-agent:approve` skill.
+- "the in-force file names … routines": call `okb_routine_in_force` again with `p_routine` for the one to print.
+- "the model file holds version …, not …, the version in force": read the version in force with `okb_get_record` and its `change_no` as `p_cutoff`.
+- "the model version holds no routine …": the in-force file is for another model. Read both for the same model.
 - "the model has no states: it is not a routine model": the model is not a routine model. Name the routine's model.
 - "the glossary file is not okb_get_reference's result for the glossary": read the glossary with `p_part` `glossary`.
 - "picture_file must be the .png draw_state_machine wrote": give the `.png` beside the state machine page.
@@ -144,13 +144,13 @@ Refusals from `draw_sop`:
 
 1. **Agree the file names:** the page, such as `order-routine-report.html`, and the PDF, such as `order-routine-report.pdf`. Each is a new file directly inside the agent folder. When a name is taken, add the next number to it.
    - **Person:** names the page and the PDF.
-   - **Agent:** proposes both names, and waits for the person's agreement.
+   - **The agent:** proposes both names, and waits for the person's agreement.
 2. **Write the page** from the page below. Put the document's text in `<main>`. Keep the wording of a document the person already has, such as a Markdown file, word for word. Give each picture by its file name alone, such as `<img src="booking-and-preparation-v2.png" alt="…">`. Each picture is a file directly inside the agent folder. A drawn page is shown by its picture, `<name>.png`, which the drawing tools write.
    - **Person:** writes the page in a text editor, in the agent folder.
-   - **Agent:** writes the page with `Write`.
+   - **The agent:** writes the page with `Write`.
 3. **Print the page.**
    - **Person:** runs `okb print_pdf page_file=<full path>.html pdf_file=<full path>.pdf`.
-   - **Agent:** calls `print_pdf` with `page_file` and `pdf_file`, as full paths.
+   - **The agent:** calls `print_pdf` with `page_file` and `pdf_file`, as full paths.
 4. **Check the PDF and give it,** as section 4 says.
 
 **AI guided:** the agent gives the person the page's text before printing, and waits for their approval.
@@ -216,22 +216,22 @@ Start each page from this one. Change the title, and the text in `<main>`.
 
 1. **Read the PDF.**
    - **Person:** opens the PDF in a PDF reader.
-   - **Agent:** reads it with `read_file`, which gives the PDF's text, page by page.
+   - **The agent:** reads it with `read_file`, which gives the PDF's text, page by page.
 2. **Check the pages and the paper.** The result's `paper` is A4, portrait or landscape, or a deck's 16:9 slide, and its page count matches the PDF.
    - **Person:** reads the page count and the paper in the result of `okb print_pdf`.
-   - **Agent:** checks the result's page count and paper.
+   - **The agent:** checks the result's page count and paper.
 3. **Check the sections.** Every heading and section of the document is there, in order, with its wording.
    - **Person:** reads each heading against the document.
-   - **Agent:** checks each heading against the page's text.
+   - **The agent:** checks each heading against the page's text.
 4. **Clear the Markdown findings.** Each finding in `print_pdf`'s `markdown_findings` is a Markdown mark on the printed page. Put each one right in the page, and print a new PDF, until there is none.
    - **Person:** reads `markdown_findings` in the result of `okb print_pdf`.
    - **The agent:** reads `markdown_findings` in the result of `print_pdf`.
 5. **Check the pictures.** `print_pdf`'s `pictures` names each picture the document shows, such as an SOP's state machine.
    - **Person:** reads the `pictures` list in the result of `okb print_pdf`, and finds each picture in the PDF.
-   - **Agent:** checks the `pictures` list against the page's pictures.
+   - **The agent:** checks the `pictures` list against the page's pictures.
 6. **Give the result:** the PDF's path, its page count and the pictures it holds.
    - **Person:** notes the PDF's path, its page count and its pictures.
-   - **Agent:** tells the person the PDF's path, its page count and the pictures it holds.
+   - **The agent:** tells the person the PDF's path, its page count and the pictures it holds.
 
 On a refusal from `print_pdf`, put the page right and print it again.
 

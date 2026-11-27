@@ -5,6 +5,7 @@ the page draws, then the findings. Beside a page `<name>.html` it is `<name>.out
 picture is `<name>.png`, the page's first screen, 1,600 pixels wide, taken with a Chromium
 browser run headless where one is found: Google Chrome, Chromium or Microsoft Edge.
 """
+import json
 import os
 import shutil
 import signal
@@ -498,7 +499,42 @@ def state_machine_findings(graph_data, sm_data):
     return found
 
 
-def check_state_machine(page_path, title, line, graph_data, sm_data):
+LIST_SHOWN = 5
+
+
+def list_text(value):
+    """A case list or auto_for list in a line: its first five items, and how many more."""
+    items = [str(v) for v in value] if isinstance(value, list) else [str(value)]
+    if not items:
+        return "every case"
+    shown = ", ".join(items[:LIST_SHOWN])
+    return f"{shown} and {len(items) - LIST_SHOWN} more" if len(items) > LIST_SHOWN else shown
+
+
+def run_lines(properties):
+    """A step's run attributes, one (label, text) each, as the state machine page's card shows them."""
+    lines = []
+    if properties.get("plugin"):
+        lines.append(("Workflow plugin", str(properties["plugin"])))
+    if properties.get("action"):
+        lines.append(("Action", str(properties["action"])))
+    if properties.get("performed_by"):
+        lines.append(("Done by", str(properties["performed_by"])))
+    if properties.get("approval"):
+        lines.append(("Approval", str(properties["approval"])))
+    if properties.get("auto_for"):
+        lines.append(("Runs without asking for", list_text(properties["auto_for"])))
+    cases = properties.get("cases") if isinstance(properties.get("cases"), dict) else {}
+    for name, value in cases.items():
+        lines.append((name.replace("_", " ").capitalize(), list_text(value)))
+    settings = properties.get("settings") if isinstance(properties.get("settings"), dict) else {}
+    if settings:
+        lines.append(("Settings", "; ".join(f"{k.replace('_', ' ')} {json.dumps(v) if isinstance(v, (dict, list)) else v}"
+                                            for k, v in settings.items())))
+    return lines
+
+
+def check_state_machine(page_path, title, line, graph_data, sm_data, since=None):
     """The state machine page's outline and picture. Returns a line for the tool's output."""
     nodes = graph_data["nodes"]
     by_id = {n["id"]: n for n in nodes}
@@ -520,6 +556,8 @@ def check_state_machine(page_path, title, line, graph_data, sm_data):
             linked = detail.get(n["id"], {}).get("links", {}).get(category, [])
             if linked:
                 out.append(f"{indent}  {heading}: {', '.join(link['name'] for link in linked)}")
+        for label, text in run_lines(detail.get(n["id"], {}).get("properties", {})):
+            out.append(f"{indent}  {label}: {text}")
         return out
 
     lines = [f"# State machine: {title}", "", line, "",
@@ -564,6 +602,14 @@ def check_state_machine(page_path, title, line, graph_data, sm_data):
         if r.get("outcome"):
             lines.append(f"  Outcome: {r['outcome']}")
     lines.append("")
+    if since is not None:
+        lines.extend([f"## Changes from version {since['version_number']}", ""])
+        for c in since["changes"]:
+            what = f" ({', '.join(f.replace('_', ' ') for f in c['fields'])})" if c["fields"] else ""
+            where = f", in {c['routine']}" if c["routine"] else ""
+            lines.append(f"- {(c['reference'] + ' ') if c['reference'] else ''}{c['name']}{where}: {c['change']}{what}")
+        lines.extend([] if since["changes"] else ["None"])
+        lines.append("")
     findings = state_machine_findings(graph_data, sm_data)
     lines.extend(findings_lines(findings))
     write(page_path, lines)

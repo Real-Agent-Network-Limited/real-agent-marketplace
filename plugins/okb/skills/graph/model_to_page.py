@@ -1,12 +1,15 @@
 """Draw a state machine page from an OKB model record.
 
-Usage: python3 model_to_page.py <record.json> <page.html>
+Usage: python3 model_to_page.py <record.json> [<earlier.json>] <page.html>
 
 The record is what `okb_get_record` returns, `{"cutoff", "version", "links"}`, with the
 model's version inside `version`. A version on its own, with its `title`,
 `version_number` and `payload`, is taken too. The page is drawn with page-shell.html, beside this
 script, and needs no network to open. Beside it are its outline and, where a Chromium browser is
 found, its picture, as the board skill's `page_check.py` writes them.
+
+With an earlier version of the same model, such as the version in force, the page marks each state added or changed
+since it, and its outline names each state added, removed or changed, with what changed.
 """
 import json
 import os
@@ -81,27 +84,45 @@ def fill_shell(shell, title, line, graph_data, sm_data):
     return page
 
 
-def render(record, shell):
+def blocks(record, changed=None):
+    """The page's two blocks, each state added or changed since the earlier version tagged so."""
     graph_data, sm_data = smp.to_blocks(record["payload"])
+    marks = {c["id"]: c["change"] for c in changed or [] if c["change"] != "removed"}
+    for n in graph_data["nodes"]:
+        if n["id"] in marks:
+            n["tags"] = n.get("tags", []) + [marks[n["id"]]]
+    return graph_data, sm_data
+
+
+def render(record, shell, changed=None):
+    graph_data, sm_data = blocks(record, changed)
     return fill_shell(shell, record["title"], summary(record, graph_data, sm_data), graph_data, sm_data)
 
 
-def check(record, page_path):
+def check(record, page_path, changed=None, earlier=None):
     """The page's outline and picture, beside it. Returns a line for the tool's output."""
-    graph_data, sm_data = smp.to_blocks(record["payload"])
+    graph_data, sm_data = blocks(record, changed)
+    since = None if earlier is None else {"version_number": earlier["version_number"], "changes": changed}
     return page_check.check_state_machine(page_path, f"{record['title']} (version {record['version_number']})",
-                                          summary(record, graph_data, sm_data), graph_data, sm_data)
+                                          summary(record, graph_data, sm_data), graph_data, sm_data, since)
 
 
 def main():
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 4):
         raise SystemExit(__doc__)
-    record_path, page_path = sys.argv[1:]
+    record_path, page_path = sys.argv[1], sys.argv[-1]
     record = model_version(json.load(open(record_path, encoding="utf-8")))
-    page = render(record, open(SHELL, encoding="utf-8").read())
+    earlier = changed = None
+    if len(sys.argv) == 4:
+        earlier = model_version(json.load(open(sys.argv[2], encoding="utf-8")))
+        if earlier.get("record_id") and record.get("record_id") and earlier["record_id"] != record["record_id"]:
+            raise SystemExit("the earlier version is of another model; no page was drawn")
+        changed = smp.changes(earlier["payload"], record["payload"])
+    page = render(record, open(SHELL, encoding="utf-8").read(), changed)
     with open(page_path, "w", encoding="utf-8", newline="\n") as out:
         out.write(page)
-    print(f"wrote {page_path} ({len(page.encode())} bytes); {check(record, page_path)}")
+    counted = "" if changed is None else f"; {len(changed)} states added, removed or changed since version {earlier['version_number']}"
+    print(f"wrote {page_path} ({len(page.encode())} bytes){counted}; {check(record, page_path, changed, earlier)}")
 
 
 if __name__ == "__main__":

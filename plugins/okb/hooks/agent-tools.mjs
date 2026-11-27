@@ -23,6 +23,8 @@
 // id's tools from the session's first turn, so the hook knows an id as Supabase's, or as Gmail's or another named
 // connector's, before any call to it. The marks a Supabase tool's call puts on its id stay.
 //
+// Every agent and session is refused the calls loginCall names, which open or save a shared login's password.
+//
 // The hook changes no call's input.
 import { closeSync, openSync, readFileSync, readSync, realpathSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -225,23 +227,46 @@ export function chromeTabRefused(url) {
 // are held by their own rules above.
 export const REFUSED_SERVERS = [/supabase/i, /postgres|pgadmin|beekeeper/i, /^plugin_okb[-_]/, /^terminal$/, /^computer-use$/,
   /^Claude_Browser$/, /playwright/i, /^Claude_Code_iOS_Simulator$/, /^ccd_/, /^scheduled-tasks$/, /^rea$/];
-// Real Agent's connector, the one that draws the home card, the Dashboard button, the approval card and the graph reader card, known by its tools'
-// names on any server, since in the desktop app its server is an id. Both agents call them with no agreement asked, and a
+// Real Agent's connector, the one that draws the home card, the Dashboard button, the approval card, the graph reader card and the Login card,
+// known by its tools' names on any server, since in the desktop app its server is an id. Both agents call them with no agreement asked, and a
 // call to one records no agreement for the rest of its server.
-export const REAL_AGENT = ["show_home", "show_approval", "show_graph_reader"];
+export const REAL_AGENT = ["show_home", "show_approval", "show_graph_reader", "show_logins"];
 // The tools only a card calls, for its page and its own tools. Claude keeps them from the model, and a card's own calls
 // never pass this hook (seen in a live session: the hook saw show_home, and none of the card's card_page and card_call).
 // So both agents are refused them by name on any server, as a second layer to Claude's, whether a card's tool is
 // reached through card_call or called by its own name.
 // The list holds every tool the connector registers with appTool, in any file of workers/connector/src, and hook.test.mjs
 // checks it against that file.
-export const CARD_ONLY = ["card_page", "card_call", "card_state", "save_version", "home_state", "task_list", "task_save", "task_open", "task_state", "run_call", "card_find_records", "card_record", "graph_reader_save", "graph_reader_off"];
+export const CARD_ONLY = ["card_page", "card_call", "card_state", "save_version", "home_state", "task_list", "task_save", "task_open", "task_state", "run_call", "card_find_records", "card_record", "graph_reader_save", "graph_reader_off",
+  "logins_list", "login_open", "login_save", "login_remove"];
 // Real Agent's connector's record, file and routine tools and the records card, for claude.ai and the phone, which load
 // no plugins. This hook is the okb plugin's, so a session it runs in has the plugin's own server. Its rpc, list_files and
 // file tools reach the same records and files, and the workflow plugins okb sync installs hold the same routines. Both
 // agents are refused these names on any server but the okb plugin's own, so they keep to the plugin's tools in Claude
 // Code. Each name starts okb, so another connector's guide, list_files or show_records is never refused.
 export const CONNECTOR_RECORDS = ["okb", "okb_list_files", "okb_file_search", "okb_file_link", "okb_file_upload_link", "okb_guide", "okb_help", "okb_routines", "okb_routine", "okb_show_records"];
+
+// The calls that open or save a shared login's password, refused to every agent and every session: the okb plugin's and the
+// supabase plugin's rpc of okb_open_login or okb_save_login, and their call_function whose body names login_open, login_save
+// or card_call; the okb tool of Real Agent's connector naming either function; the connector's login_open and login_save,
+// and its card_call of either; and a Bash or PowerShell command, an execute_sql or apply_migration query and an Agent prompt
+// that match LOGIN_TEXT. A built-in tool is passed by its own name, with no server. A person opens a login on the Login card.
+export const LOGIN_REFUSED = "A shared login's password is opened, typed and generated on the Login card alone. Show the Login card with Real Agent's connector's show_logins.";
+const LOGIN_FUNCTIONS = ["okb_open_login", "okb_save_login"];
+const LOGIN_TOOLS = ["login_open", "login_save"];
+export const LOGIN_TEXT = /okb_(open|save)_login|login_(open|save)|decrypted_secret|vault\./i;
+export function loginCall(server, tool, input = {}) {
+  const fn = String(input?.function ?? "").trim().toLowerCase().replace(/^"?okb"?\./, "").replaceAll('"', "");
+  const plugin = server === SERVER || server === "plugin_supabase_supabase";
+  if (plugin && tool === "rpc" && LOGIN_FUNCTIONS.includes(fn)) return true;
+  if (plugin && tool === "call_function" && /login_open|login_save|card_call/.test(JSON.stringify(input?.body ?? null))) return true;
+  if (server && tool === "okb" && LOGIN_FUNCTIONS.includes(fn)) return true;
+  if (server && (LOGIN_TOOLS.includes(tool) || (tool === "card_call" && LOGIN_TOOLS.includes(input?.name)))) return true;
+  if (!server && ["Bash", "PowerShell"].includes(tool)) return LOGIN_TEXT.test(String(input?.command ?? ""));
+  if (["execute_sql", "apply_migration"].includes(tool)) return LOGIN_TEXT.test(String(input?.query ?? ""));
+  if (!server && ["Agent", "Task"].includes(tool)) return LOGIN_TEXT.test(String(input?.prompt ?? ""));
+  return false;
+}
 
 /** Whether the tool is one of Real Agent's connector's record, file or routine tools, on a server other than the okb plugin's. */
 export const connectorRecord = (server, tool) => server !== SERVER && CONNECTOR_RECORDS.includes(tool);
@@ -493,6 +518,7 @@ if (argv[1] && real(fileURLToPath(import.meta.url)) === real(argv[1])) {
         deny(`The ${who} copies into the agent folder only a file in ${folders}. A folder added during a session is copied from in a new session.`);
     }
     const [, server = "", ...rest] = tool.split("__"), name = rest.join("__");
+    if (loginCall(server, server ? name : tool, call?.tool_input)) deny(LOGIN_REFUSED);
     // Both agents' calls mark a desktop id as Supabase's, and both are held by the marks. Only the database operator
     // is asked to agree to a connector.
     const marking = AGENTS[call?.agent_type] && tool.startsWith("mcp__") ? connectorState(call?.session_id ?? "none") : null;

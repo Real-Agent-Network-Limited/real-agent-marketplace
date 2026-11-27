@@ -1,0 +1,261 @@
+<style>
+.lc { display: grid; gap: 12px; padding: 6px 0 12px; font-size: 14px; line-height: 1.45; color: var(--brand-ink); }
+.lc * { box-sizing: border-box; }
+.lc h2 { margin: 0; font-size: 16px; }
+.lc p { margin: 0; overflow-wrap: anywhere; }
+.lc-sub { color: var(--brand-muted); font-size: 13px; overflow-wrap: anywhere; }
+.lc-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.lc-bar input { flex: 1 1 220px; }
+.lc input, .lc select, .lc textarea { font: inherit; color: inherit; padding: 4px 8px; border: 1px solid var(--brand-rule); border-radius: 0; background: transparent; width: 100%; min-width: 0; }
+.lc textarea { min-height: 3em; resize: vertical; }
+.lc-login { border: 1px solid var(--brand-rule); padding: 10px 12px; }
+.lc-login.open { border-color: var(--brand-accent); }
+.lc-name { all: unset; cursor: pointer; display: block; width: 100%; }
+.lc-service { font-weight: 700; overflow-wrap: anywhere; }
+.lc-detail { display: grid; gap: 8px; margin-top: 10px; }
+.lc-secret { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.lc-secret code { font-family: var(--brand-mono, ui-monospace, monospace); font-size: 15px; padding: 4px 8px; background: var(--brand-surface); overflow-wrap: anywhere; flex: 1 1 200px; }
+.lc-label { font-size: 13px; color: var(--brand-muted); }
+.lc-fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px 16px; margin-top: 10px; }
+.lc-field { display: grid; gap: 4px; min-width: 0; }
+.lc-field.wide { grid-column: 1 / -1; }
+.lc-field label { font-size: 13px; color: var(--brand-muted); }
+.lc-gen { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; }
+.lc-gen input[type="number"] { width: 5.5em; }
+.lc-gen label { display: inline-flex; gap: 6px; align-items: center; }
+.lc-gen input[type="checkbox"] { width: auto; }
+.lc-nav { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.lc-btn { font: inherit; color: inherit; padding: 3px 12px; border: 1px solid var(--brand-rule); border-radius: 0; background: transparent; cursor: pointer; }
+.lc-btn.main { background: var(--brand-accent); color: var(--brand-on-accent); border-color: var(--brand-accent); }
+.lc-btn:disabled { opacity: .5; cursor: default; }
+.lc-refused { color: var(--color-text-danger, #b42318); overflow-wrap: anywhere; }
+</style>
+<section class="lc" data-brand-logo>
+  <h2>Logins</h2>
+  <p class="lc-sub">Shared logins for outside portals. Sign in yourself, and never paste a password into the chat.</p>
+  <div id="lc-main"><p class="lc-sub">Loading…</p></div>
+</section>
+<script>
+// The Login card. It lists the shared logins the person may open, opens one with its password, and for an
+// administrator adds a login, changes its password and removes it. A password is typed or generated here, sent
+// straight to OKB, and given to nobody else: the card tells the agent nothing. Each call sends the pass show_logins, or
+// show_home, gave the card in its result's _meta, which the model never sees. The shell gives it callTool and onNotice.
+var LOWER = "abcdefghijkmnopqrstuvwxyz", UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ", DIGITS = "23456789", SYMBOLS = "!#$%&*+-=?@^_~";
+var list = { administrator: false, logins: [], scopes: [] };
+var PASS = "", begun = false, opened = {}, shown = {}, form = null, note = "", failed = "", busy = false, search = "";
+
+function esc(v) { return String(v == null ? "" : v).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
+function textOf(r) { return (r && r.content || []).map(function (c) { return c.text || ""; }).join("\n"); }
+function day(v) { if (!v) return ""; var d = new Date(v); return isNaN(d) ? "" : d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }); }
+function call(name, args, button) { args.pass = PASS; return callTool(name, args, button); }
+
+// A random whole number below n, from crypto.getRandomValues, with no bias.
+function below(n) {
+  var limit = Math.floor(4294967296 / n) * n, x = new Uint32Array(1);
+  do { crypto.getRandomValues(x); } while (x[0] >= limit);
+  return x[0] % n;
+}
+// A password of the length given, 12 to 64, with at least one character of each set it uses.
+function generate(length, symbols) {
+  var sets = [LOWER, UPPER, DIGITS].concat(symbols ? [SYMBOLS] : []), all = sets.join(""), out = [];
+  var n = Math.min(64, Math.max(12, Math.floor(Number(length) || 24)));
+  sets.forEach(function (s) { out.push(s[below(s.length)]); });
+  while (out.length < n) out.push(all[below(all.length)]);
+  for (var i = out.length - 1; i > 0; i--) { var j = below(i + 1), t = out[i]; out[i] = out[j]; out[j] = t; }
+  return out.join("");
+}
+
+function copy(text) {
+  function fallback() {
+    var t = document.createElement("textarea");
+    t.value = text; t.setAttribute("readonly", ""); t.style.position = "fixed"; t.style.opacity = "0";
+    document.body.appendChild(t); t.select();
+    var ok = false; try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    t.value = ""; t.remove();
+    return ok;
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return fallback(); });
+  }
+  return Promise.resolve(fallback());
+}
+
+function secretRow(id, label, value, when) {
+  var on = shown[id];
+  return '<div><div class="lc-label">' + esc(label) + (when ? " · " + esc(day(when)) : "") + '</div><div class="lc-secret"><code>' +
+    (on ? esc(value) : "••••••••••••") + '</code><button type="button" class="lc-btn" data-show="' + esc(id) + '">' + (on ? "Hide" : "Show") +
+    '</button><button type="button" class="lc-btn" data-copy="' + esc(id) + '">Copy</button></div></div>';
+}
+
+function passwordFields(prefix) {
+  return '<div class="lc-field wide"><label for="' + prefix + '-password">Password</label><input id="' + prefix + '-password" type="password" autocomplete="new-password" spellcheck="false"></div>' +
+    '<div class="lc-field wide"><div class="lc-gen"><button type="button" class="lc-btn" data-generate="' + prefix + '">Generate</button>' +
+    '<label>Length <input id="' + prefix + '-length" type="number" min="12" max="64" value="24"></label>' +
+    '<label><input id="' + prefix + '-symbols" type="checkbox" checked> Symbols</label>' +
+    '<label><input id="' + prefix + '-reveal" type="checkbox"> Show</label></div></div>';
+}
+
+function addForm() {
+  return '<div class="lc-login open"><div class="lc-service">Add login</div><div class="lc-fields">' +
+    '<div class="lc-field"><label for="add-scope">Scope</label><select id="add-scope">' +
+    list.scopes.map(function (s) { return '<option value="' + esc(s.scope_id) + '">' + esc(s.name) + "</option>"; }).join("") + "</select></div>" +
+    '<div class="lc-field"><label for="add-service">Service</label><input id="add-service" autocomplete="off"></div>' +
+    '<div class="lc-field"><label for="add-address">Web address</label><input id="add-address" type="url" autocomplete="off" placeholder="https://"></div>' +
+    '<div class="lc-field"><label for="add-username">Username</label><input id="add-username" autocomplete="off" spellcheck="false"></div>' +
+    '<div class="lc-field wide"><label for="add-notes">Notes</label><textarea id="add-notes"></textarea></div>' +
+    passwordFields("add") + '</div><div class="lc-nav"><button type="button" class="lc-btn main" data-save="add"' + (busy ? " disabled" : "") +
+    '>Save</button><button type="button" class="lc-btn" data-cancel="1">Cancel</button></div></div>';
+}
+
+function loginRow(l) {
+  var o = opened[l.login_id], id = l.login_id, html = '<div class="lc-login' + (o ? " open" : "") + '"><button type="button" class="lc-name" data-open="' + esc(id) + '">' +
+    '<div class="lc-service">' + esc(l.service) + '</div><div class="lc-sub">' + esc(l.username) + (l.web_address ? " · " + esc(l.web_address) : "") +
+    " · " + esc(l.scope_name) + "</div></button>";
+  if (o) {
+    html += '<div class="lc-detail">';
+    if (o.error) html += '<p class="lc-refused">' + esc(o.error) + "</p>";
+    else if (!o.password) html += '<p class="lc-sub">Loading…</p>';
+    else {
+      html += '<div><div class="lc-label">Username</div><div class="lc-secret"><code>' + esc(o.username) + '</code><button type="button" class="lc-btn" data-copy-user="' + esc(id) + '">Copy</button></div></div>';
+      html += secretRow(id, "Password", o.password, o.password_changed_at);
+      if (o.previous_password) html += secretRow(id + ":previous", "Previous password", o.previous_password, o.previous_changed_at);
+      if (o.web_address) html += '<div class="lc-sub">' + esc(o.web_address) + "</div>";
+      if (o.notes) html += '<div class="lc-sub">' + esc(o.notes) + "</div>";
+    }
+    if (list.administrator && o.password) {
+      if (form && form.kind === "change" && form.id === id) {
+        html += '<div class="lc-fields">' + passwordFields("change") + '</div><div class="lc-nav"><button type="button" class="lc-btn main" data-save="change"' +
+          (busy ? " disabled" : "") + '>Save</button><button type="button" class="lc-btn" data-cancel="1">Cancel</button></div>';
+      } else if (form && form.kind === "remove" && form.id === id) {
+        html += "<p>Remove the login for " + esc(l.service) + ", " + esc(l.username) + ', with its password and previous password?</p><div class="lc-nav">' +
+          '<button type="button" class="lc-btn main" data-remove="' + esc(id) + '"' + (busy ? " disabled" : "") + '>Remove</button><button type="button" class="lc-btn" data-cancel="1">Cancel</button></div>';
+      } else {
+        html += '<div class="lc-nav"><button type="button" class="lc-btn" data-change="' + esc(id) + '">Change password</button><button type="button" class="lc-btn" data-ask-remove="' + esc(id) + '">Remove</button></div>';
+      }
+    }
+    html += "</div>";
+  }
+  return html + "</div>";
+}
+
+function draw() {
+  var q = search.trim().toLowerCase(), rows = list.logins.filter(function (l) {
+    return !q || [l.service, l.username, l.web_address].join(" ").toLowerCase().indexOf(q) >= 0;
+  });
+  var html = '<div class="lc-bar"><input id="search" type="search" placeholder="Find a login" autocomplete="off" value="' + esc(search) + '">' +
+    (list.administrator && !(form && form.kind === "add") ? '<button type="button" class="lc-btn" data-add="1">Add login</button>' : "") + "</div>";
+  if (note) html += '<p id="lc-note">' + esc(note) + "</p>";
+  if (failed) html += '<p class="lc-refused" id="lc-failed">' + esc(failed) + "</p>";
+  if (form && form.kind === "add") html += addForm();
+  html += rows.length ? rows.map(loginRow).join("") : '<p class="lc-sub">' + (list.logins.length ? "No login matches." : "There is no login you may open.") + "</p>";
+  var keep = document.activeElement && document.activeElement.id === "search", typed = [];
+  // A form's fields keep what was typed in them when the card is drawn again.
+  document.querySelectorAll("#lc-main [id^='add-'], #lc-main [id^='change-']").forEach(function (el) { typed.push([el.id, el.type === "checkbox" ? el.checked : el.value]); });
+  document.getElementById("lc-main").innerHTML = html;
+  typed.forEach(function (f) {
+    var el = document.getElementById(f[0]); if (!el) return;
+    if (el.type === "checkbox") el.checked = f[1]; else el.value = f[1];
+  });
+  ["add", "change"].forEach(function (p) { var r = document.getElementById(p + "-reveal"); if (r && r.checked) document.getElementById(p + "-password").type = "text"; });
+  if (keep) { var s = document.getElementById("search"); s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
+}
+
+function load() {
+  call("logins_list", {}).then(function (r) {
+    if (r.isError) { failed = textOf(r); draw(); return; }
+    list = r.structuredContent; draw();
+  }).catch(function (e) { failed = "Real Agent's connector could not list the logins: " + e.message; draw(); });
+}
+
+function open(id) {
+  if (opened[id]) { delete opened[id]; delete shown[id]; delete shown[id + ":previous"]; if (form && form.id === id) form = null; draw(); return; }
+  opened[id] = {}; draw();
+  call("login_open", { login_id: id }, "open").then(function (r) {
+    opened[id] = r.isError ? { error: textOf(r) } : r.structuredContent; draw();
+  }).catch(function (e) { opened[id] = { error: "Real Agent's connector could not open the login: " + e.message }; draw(); });
+}
+
+function value(id) { var el = document.getElementById(id); return el ? el.value : ""; }
+
+function save(kind) {
+  if (busy) return;
+  var password = value(kind + "-password"), args;
+  if (!password) { failed = "Type or generate the password first."; draw(); return; }
+  if (kind === "add") {
+    args = { scope: value("add-scope"), service: value("add-service").trim(), web_address: value("add-address").trim(),
+      username: value("add-username").trim(), notes: value("add-notes").trim(), password: password };
+    if (!args.service || !args.username) { failed = "A login needs its service and username."; draw(); return; }
+    form.draft = { scope: args.scope, service: args.service, web_address: args.web_address, username: args.username, notes: args.notes };
+  } else args = { login_id: form.id, password: password };
+  busy = true; failed = ""; note = "";
+  call("login_save", args, kind === "add" ? "add" : "change").then(function (r) {
+    busy = false;
+    if (r.isError) { failed = textOf(r); draw(); refill(); return; }
+    var saved = r.structuredContent.login;
+    note = kind === "add" ? "The login for " + saved.service + " is saved." : "The new password for " + saved.service + " is saved. The one before it is its previous password.";
+    form = null; opened = {}; shown = {};
+    load();
+  }).catch(function (e) {
+    busy = false;
+    failed = "The card lost OKB's reply: " + e.message + ". Open the login to see whether OKB saved it.";
+    form = null; draw();
+  });
+}
+// The add form's details after a refusal; the password is typed or generated again.
+function refill() {
+  if (!form || form.kind !== "add" || !form.draft) return;
+  var d = form.draft;
+  [["add-scope", d.scope], ["add-service", d.service], ["add-address", d.web_address], ["add-username", d.username], ["add-notes", d.notes]]
+    .forEach(function (f) { var el = document.getElementById(f[0]); if (el) el.value = f[1] || ""; });
+}
+
+function remove(id) {
+  if (busy) return;
+  busy = true; failed = ""; note = ""; draw();
+  call("login_remove", { login_id: id }, "remove").then(function (r) {
+    busy = false;
+    if (r.isError) { failed = textOf(r); draw(); return; }
+    note = "The login for " + r.structuredContent.service + " is removed.";
+    form = null; opened = {}; shown = {};
+    load();
+  }).catch(function (e) { busy = false; failed = "The card lost OKB's reply: " + e.message + "."; form = null; draw(); });
+}
+
+document.addEventListener("input", function (e) {
+  if (e.target.id === "search") { search = e.target.value; draw(); }
+});
+document.addEventListener("change", function (e) {
+  var m = /^(add|change)-reveal$/.exec(e.target.id || "");
+  if (m) document.getElementById(m[1] + "-password").type = e.target.checked ? "text" : "password";
+});
+document.addEventListener("click", function (e) {
+  var t = e.target.closest && e.target.closest("button"); if (!t || !PASS) return;
+  var d = t.dataset;
+  if (d.open) open(d.open);
+  else if (d.show) { shown[d.show] = !shown[d.show]; draw(); }
+  else if (d.copy || d.copyUser) {
+    var key = d.copy || d.copyUser, id = key.split(":")[0], o = opened[id] || {};
+    var text = d.copyUser ? o.username : key.indexOf(":previous") > 0 ? o.previous_password : o.password;
+    copy(text || "").then(function (ok) { note = ok ? "Copied." : "This window refused the copy. Show the password and copy it from there."; failed = ""; draw(); });
+  }
+  else if (d.add) { form = { kind: "add" }; note = ""; failed = ""; draw(); }
+  else if (d.change) { form = { kind: "change", id: d.change }; note = ""; failed = ""; draw(); }
+  else if (d.askRemove) { form = { kind: "remove", id: d.askRemove }; note = ""; failed = ""; draw(); }
+  else if (d.cancel) { form = null; failed = ""; draw(); }
+  else if (d.generate) {
+    var p = d.generate, field = document.getElementById(p + "-password");
+    field.value = generate(value(p + "-length"), document.getElementById(p + "-symbols").checked);
+  }
+  else if (d.save) save(d.save);
+  else if (d.remove) remove(d.remove);
+});
+onNotice["ui/notifications/tool-result"] = function (p) {
+  if (begun) return;
+  begun = true;
+  if (p.isError) { failed = textOf(p); draw(); return; }
+  PASS = (p._meta && (p._meta.login_pass || p._meta.pass)) || "";
+  // Claude gives the card its pass with the tool's result. Without one, every call would be refused.
+  if (!PASS) { document.getElementById("lc-main").innerHTML = '<p class="lc-refused">Claude gave this card no pass, so it can\'t open a login. Ask Claude to show the Login card again.</p>'; return; }
+  load();
+};
+</script>

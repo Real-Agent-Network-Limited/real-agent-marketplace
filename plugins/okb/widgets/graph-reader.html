@@ -31,7 +31,8 @@
 <script>
 // The graph reader card: it shows whether the graph reader is on, in the words show_graph_reader's result gives. Save
 // calls graph_reader_save with the key typed here, which OKB keeps only once Anthropic takes it, and the card then shows
-// connected or the reason. Turn off calls graph_reader_off, which removes the key. When Anthropic didn't answer, the card
+// connected or the reason. Connected with no class in the glossary shows the waiting state, since OKB then reads no
+// part. Turn off calls graph_reader_off, which removes the key. When Anthropic didn't answer, the card
 // says why and offers both. Both send the pass show_graph_reader gave the card in its result's _meta, which the model
 // never sees. The shell gives it callTool and onNotice.
 var SAID = {}, PASS = "", begun = false;
@@ -50,7 +51,12 @@ $("gr-form").addEventListener("submit", function (e) {
   busy(true);
   say("Checking the key with Anthropic…", false);
   callTool("graph_reader_save", { key: $("gr-key").value, pass: PASS }, "save").then(function (r) {
-    if (r && !r.isError) { $("gr-key").value = ""; showState("on"); say("Connected. Tell Claude the graph reader is on.", false); }
+    if (r && !r.isError) {
+      var now = (r.structuredContent && r.structuredContent.state) || "on";
+      $("gr-key").value = ""; showState(now, r.structuredContent && r.structuredContent.problem);
+      say(now === "waiting" ? "Connected, but OKB reads no part until the glossary has a class. Tell Claude the graph reader is on, and ask it to propose the glossary's classes."
+        : "Connected. Tell Claude the graph reader is on.", false);
+    }
     else say("Not kept: " + (textOf(r) || "Real Agent's connector gave nothing back."), true);
   }, function (e) { say("Not kept: " + (e && e.message || e), true); }).then(function () { busy(false); });
 });

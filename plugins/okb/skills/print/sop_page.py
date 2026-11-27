@@ -1,16 +1,17 @@
-"""Write a standard operating procedure (SOP) for one routine as an A4 page, from its model version.
+"""Write a standard operating procedure (SOP) for one routine as an A4 page, from its version in force.
 
-Usage: python3 sop_page.py <model.json> <glossary.json> <page.html> --picture NAME [--version-id ID] [--brand=<brand.json>]
+Usage: python3 sop_page.py <model.json> <glossary.json> <in-force.json> <page.html> --picture NAME [--version-id ID] [--brand=<brand.json>]
 
-The model is the routine's approved model version: what okb_get_record returns, {"cutoff", "version",
-"links"}, a version on its own, or a page of okb_get_history with --version-id naming the version. It
-is a routine model, as the graph skill's "The state machine model" sets out. The glossary is what
-okb_get_reference returns for the glossary. NAME is the picture of the routine's state machine page,
-a file beside the page, as draw_state_machine writes it.
+The in-force file is what okb_routine_in_force returns for the model and the one routine, naming its version in
+force and the approval that put it in force. The model is that version: what okb_get_record returns, {"cutoff",
+"version", "links"}, read with the version's change_no as p_cutoff, a version on its own, or a page of
+okb_get_history. Any other version is refused. It is a routine model, as the graph skill's "The state machine model"
+sets out. The glossary is what okb_get_reference returns for the glossary. NAME is the picture of the routine's state
+machine page, a file beside the page, as draw_state_machine writes it.
 
-The SOP holds the routine's purpose, its trigger, each state with who does it, what they do, the tool
-and the checks, the handovers, the exceptions, the drawn state machine, and the glossary terms it
-uses. It sets @page to A4, for the print skill's print_pdf.py. Beside the page, the board skill's
+The SOP names the routine's version and its approval on its first page, and holds the routine's purpose, its trigger,
+each of its states with who does it, what they do, the tool, the checks and its run attributes, the handovers, the
+exceptions, the drawn state machine, and the glossary terms it uses. It sets @page to A4, for the print skill's print_pdf.py. Beside the page, the board skill's
 `page_check.py` writes its outline, and its picture where a Chromium browser is found.
 """
 import argparse
@@ -23,6 +24,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.join(os.path.dirname(HERE), "board"))
 import a4  # noqa: E402
 import page_check  # noqa: E402
+from page_check import run_lines  # noqa: E402
 
 esc = a4.esc
 STATE_TYPES = ("start", "activity", "end", "dead_end", "gap")
@@ -40,7 +42,7 @@ def model_version(value, version_id):
         raise SystemExit("the record does not exist, or you may not read it; no page was written")
     if isinstance(value, dict) and isinstance(value.get("items"), list):
         if not version_id:
-            raise SystemExit("the model file is a page of okb_get_history: name the approved version with version_id; no page was written")
+            raise SystemExit("the model file is a page of okb_get_history, and no version in force is named; no page was written")
         found = [v for v in value["items"] if v.get("version_id") == version_id]
         if not found:
             raise SystemExit(f"the history page holds no version {version_id}; no page was written")
@@ -50,13 +52,28 @@ def model_version(value, version_id):
     else:
         version = value.get("version", value) if isinstance(value, dict) else None
         if version_id and isinstance(version, dict) and version.get("version_id") != version_id:
-            raise SystemExit(f"the model file holds version {version.get('version_id')}, not {version_id}; read the approved version; no page was written")
+            raise SystemExit(f"the model file holds version {version.get('version_id')}, not {version_id}, the version in force; read it with okb_get_record and its change_no as p_cutoff; no page was written")
     if not isinstance(version, dict) or not isinstance((version.get("payload") or {}).get("graph"), dict):
         raise SystemExit("the file does not hold a model record's version; no page was written")
     return version
 
 
-def build(version, glossary, picture):
+def in_force_of(value):
+    """The one routine okb_routine_in_force names, with its version in force and its approval."""
+    if value is None:
+        raise SystemExit("the in-force file names no model you may read; no page was written")
+    if not isinstance(value, dict) or not isinstance(value.get("routines"), list):
+        raise SystemExit("the in-force file is not okb_routine_in_force's result; no page was written")
+    if not value["routines"]:
+        raise SystemExit("no version of the routine is in force: no approval of it supports a version; no page was written")
+    if len(value["routines"]) > 1:
+        names = ", ".join(f"{r['routine'].get('reference', '')} {r['routine'].get('name', '')}".strip() for r in value["routines"])
+        raise SystemExit(f"the in-force file names {len(value['routines'])} routines, {names}; call okb_routine_in_force with p_routine "
+                         "for the one to print; no page was written")
+    return value["routines"][0]
+
+
+def build(version, glossary, picture, in_force=None):
     payload = version["payload"]
     graph = payload["graph"]
     nodes = {n["id"]: n for n in graph.get("nodes", [])}
@@ -64,10 +81,18 @@ def build(version, glossary, picture):
     attr = lambda n: n.get("attributes") or {}
     linked = lambda source, kind: [nodes[e["target"]] for e in edges if e["source"] == source and e.get("type") == kind and e["target"] in nodes]
     states = sorted((n for n in nodes.values() if n.get("type") in STATE_TYPES), key=lambda n: (natural(attr(n).get("reference")), n["label"]))
-    if not states:
-        raise SystemExit("the model has no states: it is not a routine model; no page was written")
     part_of = {e["source"]: e["target"] for e in edges if e.get("type") == "part_of"}
     routines = sorted((n for n in nodes.values() if n.get("type") in ("routine", "route_group")), key=lambda n: natural(attr(n).get("reference")))
+    # The routine in force alone, of a workflow of several.
+    named = (in_force or {}).get("routine") or {}
+    if named.get("type") in ("routine", "route_group"):
+        routines = [r for r in routines if r["type"] == named["type"] and r["label"] == named.get("name")
+                    and str(attr(r).get("reference", "")) == named.get("reference", "")]
+        if not routines:
+            raise SystemExit(f"the model version holds no routine {named.get('reference', '')} {named.get('name', '')}; no page was written")
+        states = [s for s in states if part_of.get(s["id"]) == routines[0]["id"]]
+    if not states:
+        raise SystemExit("the model has no states: it is not a routine model; no page was written")
     findings = []
 
     def who(s):
@@ -83,7 +108,7 @@ def build(version, glossary, picture):
                 "who": who(s), "what": attr(s).get("description", ""),
                 "tools": [a["label"] for a in linked(s["id"], "occurs_in")],
                 "reads": [d["label"] for d in linked(s["id"], "reads_from")], "writes": [d["label"] for d in linked(s["id"], "writes_to")],
-                "checks": checks,
+                "checks": checks, "run": run_lines(attr(s)),
                 "next": [nodes[e["target"]]["label"] for e in edges if e["source"] == s["id"] and e.get("type") in ("flow", "sequence") and e["target"] in nodes]}
         if s["type"] in ("start", "activity") and not step["who"]:
             findings.append(f"{step['reference'] or step['name']} {step['name']}: no one is named as doing it")
@@ -114,7 +139,10 @@ def build(version, glossary, picture):
             if name and re.search(r"(?<![\w])" + re.escape(name) + r"(?![\w])", words, re.I):
                 used.append(row)
                 break
+    approval = (in_force or {}).get("approval") or {}
     return {"title": version.get("title", "Routine"), "version_number": version.get("version_number"), "version_id": version.get("version_id"),
+            "routine": (f"{named.get('reference', '')} {named.get('name', '')}".strip() if named.get("type") in ("routine", "route_group") else ""),
+            "approval": {"title": approval.get("title", ""), "decided_on": approval.get("decided_on", ""), "decided_by": approval.get("decided_by_name") or ""},
             "model_kind": payload.get("model_kind"), "purpose": payload.get("description", ""),
             "routines": [{"name": r["label"], "reference": attr(r).get("reference", ""), "text": attr(r).get("description", "")} for r in routines],
             "triggers": [s["id"] for s in triggers], "steps": steps, "handovers": handovers, "exceptions": [s["id"] for s in exceptions],
@@ -129,9 +157,12 @@ def listed(items):
 def fill(data):
     by_id = {s["id"]: s for s in data["steps"]}
     kind = KIND_NAMES.get(data["model_kind"], data["model_kind"] or "model")
-    b = [f"<h1>{esc(data['title'])}</h1>",
+    a = data["approval"]
+    b = [f"<h1>{esc(data['title'])}{(': ' + esc(data['routine'])) if data['routine'] else ''}</h1>",
          f'<p class="meta">Standard operating procedure, printed from OKB on {esc(a4.printed_on())}, from model version '
          f"{esc(data['version_number'])}, the {esc(kind)}.</p>",
+         f'<p class="meta">Version {esc(data["version_number"])} is the version in force: approved by {esc(a["decided_by"] or "an approver OKB does not name")}'
+         f" on {esc(a['decided_on'])}, in the decision {esc(a['title'])}.</p>",
          "<h2>Purpose</h2>", f"<p>{esc(data['purpose']) or '<span class=none>The model states no purpose.</span>'}</p>"]
     for r in data["routines"]:
         if r["text"]:
@@ -152,6 +183,7 @@ def fill(data):
                  f"<dt>Checks</dt><dd>{'<ul>' + checks + '</ul>' if checks else 'None named'}</dd>"
                  + (f"<dt>Reads</dt><dd>{esc(', '.join(s['reads']))}</dd>" if s["reads"] else "")
                  + (f"<dt>Writes</dt><dd>{esc(', '.join(s['writes']))}</dd>" if s["writes"] else "")
+                 + "".join(f"<dt>{esc(label)}</dt><dd>{esc(text)}</dd>" for label, text in s["run"])
                  + (f"<dt>Next</dt><dd>{esc(', '.join(s['next']))}</dd>" if s["next"] else "") + "</dl></div>")
     b.append("<h2>Handovers</h2>")
     b.append("<ul>" + "".join(f"<li>{('<b>' + esc(h['routine']) + ':</b> ') if h['routine'] else ''}{esc(h['text'])}</li>" for h in data["handovers"]) + "</ul>"
@@ -170,13 +202,16 @@ def fill(data):
 
 def outline(data):
     by_id = {s["id"]: s for s in data["steps"]}
-    lines = [f"# SOP: {data['title']}", "", f"Model version {data['version_number']}, {data['model_kind']}.", "",
+    a = data["approval"]
+    lines = [f"# SOP: {data['title']}{(': ' + data['routine']) if data['routine'] else ''}", "", f"Model version {data['version_number']}, {data['model_kind']}.", "",
+             f"In force: approved by {a['decided_by'] or 'an approver OKB does not name'} on {a['decided_on']}, in the decision {a['title']}.", "",
              "## Purpose", "", data["purpose"] or "None stated.", "", "## Trigger", ""]
     lines += [f"- {by_id[t]['name']}: {by_id[t]['what']}" for t in data["triggers"]] or ["None."]
     lines += ["", "## The state machine", "", f"Picture: {data['picture']}", "", "## Each state", ""]
     for s in data["steps"]:
         lines.append(f"- {(s['reference'] + ' ') if s['reference'] else ''}{s['name']} · {s['type']} · who: {listed(s['who'])} · tool: {listed(s['tools'])}"
-                     + f" · checks: {', '.join(c['name'] for c in s['checks']) or 'none'}")
+                     + f" · checks: {', '.join(c['name'] for c in s['checks']) or 'none'}"
+                     + "".join(f" · {label.lower()}: {text}" for label, text in s["run"]))
     lines += ["", "## Handovers", ""] + ([f"- {h['text']}" for h in data["handovers"]] or ["None."])
     lines += ["", "## Exceptions", ""] + ([f"- {by_id[x]['name']}" for x in data["exceptions"]] or ["None."])
     lines += ["", "## Terms", ""] + ([f"- {t['term']}" for t in data["terms"]] or ["None."]) + [""]
@@ -187,6 +222,7 @@ def main():
     parser = argparse.ArgumentParser(description="Write an SOP for one routine from its model version.")
     parser.add_argument("model")
     parser.add_argument("glossary")
+    parser.add_argument("in_force")
     parser.add_argument("page")
     parser.add_argument("--picture", required=True, help="the state machine page's picture, beside the page")
     parser.add_argument("--version-id", default="")
@@ -194,11 +230,14 @@ def main():
     args = parser.parse_args()
     if "/" in args.picture or "\\" in args.picture or args.picture.startswith("."):
         raise SystemExit("the picture is named by its file name alone, beside the page; no page was written")
-    version = model_version(a4.read(args.model), args.version_id)
+    in_force = in_force_of(a4.read(args.in_force))
+    if args.version_id and args.version_id != in_force["version_id"]:
+        raise SystemExit(f"version {args.version_id} is not the version in force, {in_force['version_id']}; no page was written")
+    version = model_version(a4.read(args.model), in_force["version_id"])
     glossary = a4.read(args.glossary)
     if not isinstance(glossary, dict) or glossary.get("part") != "glossary" or not isinstance(glossary.get("rows"), list):
         raise SystemExit("the glossary file is not okb_get_reference's result for the glossary; no page was written")
-    data = build(version, glossary["rows"], args.picture)
+    data = build(version, glossary["rows"], args.picture, in_force)
     brand = a4.read_brand(args.brand)
     page = a4.page(f"SOP: {data['title']}", fill(data), "sop-data", data, brand)
     with open(args.page, "w", encoding="utf-8", newline="\n") as out:

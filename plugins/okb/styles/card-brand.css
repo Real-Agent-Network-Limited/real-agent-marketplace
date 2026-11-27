@@ -14,3 +14,5 @@ h1, h2, h3 { font-family: var(--brand-heading-font); }
 .wk-answer button#wk-yes { background: var(--brand-accent); color: var(--brand-on-accent); border-color: var(--brand-accent); }
 .brand-logo { display: block; height: 24px; width: auto; max-width: 160px; object-fit: contain; margin: 0 0 8px; }
 .wk-head > .brand-logo { margin: 0; }
+/* A dark-mode logo's pair: the switch hides the one that doesn't fit the card's mode, which display: block would undo. */
+.brand-logo[hidden] { display: none; }

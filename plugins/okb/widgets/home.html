@@ -42,6 +42,7 @@ button.hc-row:first-child { border-top: 0; }
 .hc-facts { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; margin: 0; }
 .hc-facts dt { font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--brand-muted); }
 .hc-facts dd { margin: 0; overflow-wrap: anywhere; }
+.hc-frame { width: 100%; border: 0; display: block; min-height: 120px; }
 @container (max-width: 480px) {
   .hc-row { grid-template-columns: 1fr; }
   .hc-row .hc-tag { justify-self: start; }
@@ -60,10 +61,11 @@ button.hc-row:first-child { border-top: 0; }
 </section>
 <script>
 // The home card's code. It reads the person's counts, tabs and rows with home_state, and draws them. The Tasks tab's
-// Create task is taskForm and View my tasks is listTasks. A task's row opens the task, and its buttons change its
+// Create task is taskForm and View my tasks is listTasks. Logins opens the Login card inside the home card, in a frame
+// of its own, with the pass show_home gave the home card. A task's row opens the task, and its buttons change its
 // state. Each tool call names the button pressed, for the usage row. The shell gives it callTool, tellAgent and
 // onNotice.
-var home = null, begun = false;
+var home = null, begun = false, loginPass = "", login = null;
 function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
 function textOf(r) { return (r && r.content || []).map(function (c) { return c.text || ""; }).join("\n"); }
 function line(text, refused) {
@@ -137,7 +139,34 @@ var MOVES = {
 function press(tab, key) {
   if (key === "tasks") return listTasks(tab);
   if (key === "task_new") return taskForm(tab);
+  if (key === "logins") return openLogins(tab);
 }
+// The Login card, in a frame inside the home card. The home card answers the frame's ui/initialize with its own, hands it
+// show_home's pass as the Login card's own tool result, sizes it, and passes each call it makes to Claude.
+function openLogins(tab) {
+  var b = form(tab, "");
+  if (!loginPass) { b.innerHTML = refusal("Claude gave this card no pass for the Login card. Ask Claude to show the Login card."); return; }
+  var f = document.createElement("iframe");
+  f.className = "hc-frame"; f.title = "Logins"; f.srcdoc = LOGIN_SHELL;
+  b.appendChild(f);
+  login = f;
+}
+window.addEventListener("message", function (e) {
+  if (!login || e.source !== login.contentWindow) return;
+  var m = e.data, f = login;
+  if (!m || m.jsonrpc !== "2.0" || !m.method) return;
+  function send(msg) { if (f.contentWindow) f.contentWindow.postMessage(msg, "*"); }
+  function reply(result, error) { send(error ? { jsonrpc: "2.0", id: m.id, error: { code: -32000, message: error } } : { jsonrpc: "2.0", id: m.id, result: result }); }
+  if (m.method === "ui/initialize") { ready.then(function (r) { reply(r); }); return; }
+  if (m.method === "ui/notifications/initialized") {
+    send({ jsonrpc: "2.0", method: "ui/notifications/tool-result", params: { content: [{ type: "text", text: "The Login card is shown." }], structuredContent: { card: "login" }, _meta: { login_pass: loginPass } } });
+    return;
+  }
+  if (m.method === "ui/notifications/size-changed") { f.style.height = Math.ceil((m.params && m.params.height) || 0) + "px"; return; }
+  // The Login card tells the agent nothing, so the frame may only call tools.
+  if (m.id === undefined || m.method !== "tools/call") return;
+  request(m.method, m.params).then(function (r) { reply(r); }, function (err) { reply(null, err.message); });
+});
 function listTasks(tab) {
   form(tab, '<div class="hc-out"><p class="hc-line">Loading…</p></div>');
   callTool("task_list", {}, "view-tasks").then(function (r) {
@@ -255,6 +284,7 @@ function begin() { if (begun) return; begun = true; load(); }
 onNotice["ui/notifications/tool-input"] = function () { begin(); };
 onNotice["ui/notifications/tool-result"] = function (p) {
   if (p.isError) return line(textOf(p), true);
+  if (p._meta && typeof p._meta.login_pass === "string") loginPass = p._meta.login_pass;
   begin();
 };
 </script>

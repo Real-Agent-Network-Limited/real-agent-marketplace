@@ -1,6 +1,6 @@
 // The firm's brand, as OKB keeps it: one model record in General titled Brand. Its brand node's attributes hold the
 // palette, six tokens each with a light and a dark value, the heading and body fonts, and the logo, a small copy as a
-// data address. readBrand reads it as the signed-in person. brandOf keeps only the values that are a colour, a font's
+// data address, with a second copy for dark mode where the logo's own has dark text. readBrand reads it as the signed-in person. brandOf keeps only the values that are a colour, a font's
 // name or a picture's data address, so no value can carry markup or a style of its own into a card or a page.
 //
 // The okb plugin's styles/ folder holds tokens.css, Real Agent's own value for each --brand- custom property, and one
@@ -47,6 +47,9 @@ function fallbackOf(text) {
   return names.some(n => GENERIC.has(n)) ? names : [...names, "sans-serif"];
 }
 
+/** Whether a value is a logo's copy a card or page may take: a PNG, JPEG, GIF or WebP data address of at most MAX_LOGO. */
+const pictureOf = v => typeof v === "string" && v.length <= MAX_LOGO && PICTURE.test(v);
+
 /** The brand from okb_show_record's answer for the Brand record, or null where it holds nothing a card can use. */
 export function brandOf(record) {
   const nodes = record?.payload?.graph?.nodes;
@@ -66,8 +69,10 @@ export function brandOf(record) {
     if (typeof f?.family === "string" && FONT.test(f.family.trim())) fonts[role] = { family: f.family.trim(), google: f.source === "google", fallback: fallbackOf(f.fallback) };
   }
   const l = a.logo;
-  const logo = typeof l?.data_address === "string" && l.data_address.length <= MAX_LOGO && PICTURE.test(l.data_address)
+  const logo = pictureOf(l?.data_address)
     ? { src: l.data_address, alt: typeof l.alt === "string" && l.alt.trim() ? l.alt.trim() : String(node.label ?? "") } : null;
+  // The dark-mode copy goes with the logo only: with no logo, there is nothing for it to stand in for.
+  if (logo && pictureOf(l.dark?.data_address)) logo.dark = l.dark.data_address;
   if (!Object.keys(palette.light).length && !Object.keys(palette.dark).length && !Object.keys(fonts).length && !logo) return null;
   return { name: String(node.label ?? ""), palette, fonts, logo };
 }
@@ -151,8 +156,38 @@ export function printTokens(brand) {
 /** A printed page's or deck's whole brand style: its fonts' @import, its tokens, then the kind's stylesheet. */
 export const printStyle = (brand, kindCss) => `${fontImport(brand)}${printTokens(brand)}${kindCss.trimEnd()}\n`;
 
-/** The brand's logo as an <img> of the class given, or nothing. */
+/** The brand's logo as an <img> of the class given, or nothing. It is the light logo always, as paper takes it. */
 export const logoHtml = (brand, cls) => brand?.logo ? `<img class="${cls}" alt="${esc(brand.logo.alt)}" src="${brand.logo.src}">` : "";
+
+/** The brand's logo for a card, as <img> of the class given, or nothing. With a dark-mode copy it is two: the light
+ * logo, then the dark one, hidden. LOGO_SWITCH shows the one that fits the light or dark mode the card is in. */
+export const themedLogoHtml = (brand, cls) => brand?.logo?.dark
+  ? `<img class="${cls}" data-scheme="light" alt="${esc(brand.logo.alt)}" src="${brand.logo.src}">` +
+    `<img class="${cls}" data-scheme="dark" alt="${esc(brand.logo.alt)}" src="${brand.logo.dark}" hidden>`
+  : logoHtml(brand, cls);
+
+/** A card's code that shows its dark logo in dark mode and its light logo otherwise. A card is in dark mode where the
+ * palette's light-dark() takes its dark value at the logo: the same test that picks the brand's dark accent. It looks
+ * again when the computer's mode changes, and when Claude sets the card's mode on its root. */
+export const LOGO_SWITCH = `;(function () {
+  var logos = document.querySelectorAll("img[data-scheme]");
+  if (!logos.length) return;
+  function dark(img) {
+    var probe = document.createElement("span");
+    probe.style.cssText = "position: absolute; visibility: hidden; color: #000; color: light-dark(#000, #fff);";
+    img.parentNode.appendChild(probe);
+    var seen = getComputedStyle(probe).color;
+    probe.remove();
+    return seen === "rgb(255, 255, 255)";
+  }
+  function show() {
+    Array.prototype.forEach.call(logos, function (img) { img.hidden = (img.getAttribute("data-scheme") === "dark") !== dark(img); });
+  }
+  show();
+  if (window.matchMedia) window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", show);
+  if (window.MutationObserver) new MutationObserver(show).observe(document.documentElement, { attributes: true, attributeFilter: ["style", "class"] });
+})();
+`;
 
 /** The value of work, or null where work fails or takes longer than ms. With strict, a failure or the wait running out
  * throws instead. The timer never keeps the process alive. */

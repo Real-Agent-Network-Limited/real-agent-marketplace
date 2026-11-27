@@ -156,7 +156,7 @@ Not kept:
 
 ## The state machine model
 
-Besides the page's own node types (`routine`, `route_group`, `start`, `activity`, `end`, `dead_end`, `gap`, `data`, `rule`, `related_machine` and `object`), the graph has:
+Besides the page's own node types (`routine`, `route_group`, `start`, `activity`, `end`, `dead_end`, `gap`, `data`, `rule`, `related_machine` and `object`), the graph has these nodes. Each `activity` may also hold the run attributes in "The run attributes".
 
 - one `state_machine` node, holding the page's mode and format. A model written as a payload may leave it out. Its page then takes its mode from `model_kind`, and each state lists the actors, applications and data it links to;
 - an `actor` or `application` node for each actor and application a state links to;
@@ -169,6 +169,24 @@ Its edges are:
 - `performed_by`, `occurs_in`, `reads_from` and `writes_to`, from a state to what it links to;
 - `in_route`, from each state to each route it is in, in the route's order;
 - `listed_in`, from a state to an application in the page's applications list.
+
+## The run attributes
+
+An approved routine model is the routine the agent follows, as the `okb:records` skill's "The routine in force" says. So each `activity` may hold what the agent needs to run it, among its attributes. Each is optional.
+
+- `action`: the name of a section in the workflow plugin's actions skill, such as `send_quote`. The section holds the step's calls.
+- `performed_by`: the role in the plugin's `access.json` whose person does the step, or `agent`.
+- `approval`: the role whose person says yes before the step runs. Empty runs the step without asking.
+- `auto_for`: the email addresses of requesters whose cases run the step without asking.
+- `cases`: named lists, such as `{"customers": ["Harbour Stores"], "sources": ["email"]}`. The step runs for a case each list names. An empty list names every case.
+- `settings`: any value the step's section reads, such as `{"look_back_days": 30}`.
+- `plugin`: the workflow plugin whose section the step's action names, where it is not the routine's.
+
+A `routine` node may hold `plugin`, the workflow plugin whose actions its steps call.
+
+Content lives in these attributes alone: countries, customers, amounts, windows, channels, recipients and wording. A section holds the mechanics, and a value it needs that the step lacks is handed over, never made up.
+
+The state machine page shows each run attribute on the activity's card, one line each, and the outline lists them under the state. A case list longer than five names its first five and how many more. `state_machine_payload` keeps them, so the page gives them back as the record held them.
 
 ## Problems
 

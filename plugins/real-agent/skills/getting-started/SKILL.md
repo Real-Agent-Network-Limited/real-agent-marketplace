@@ -110,7 +110,7 @@ Each person starts a session in Claude desktop, on their office computer, in the
 
 ## 5. Lesson 4: Calling a workflow agent with @
 
-Each of the firm's workflows is one plugin with one agent, and each routine in it is one skill. The person calls an agent by typing `@` and its name, such as `@orders:orders`. Every folder has the business analyst, `@business-analyst:business-analyst`, which writes down the firm's workflows and their routines.
+Each of the firm's workflows has one plugin with one agent. The agent follows each routine of the workflow as the firm last approved it, from the knowledge base. The person calls an agent by typing `@` and its name, such as `@orders:orders`. Every folder has the business analyst, `@business-analyst:business-analyst`, which writes down the firm's workflows and their routines.
 
 1. **List the agents in the folder.**
    - **Person:** types `@` in a session, and reads the list Claude desktop offers.
@@ -180,7 +180,7 @@ The first install comes from Real Agent's public marketplace. The person added i
 
 ## 9. Lesson 8: A routine in each of the three modes
 
-Every routine skill runs in three modes. In human only, the person does each step themselves, with the `okb` command. In AI guided, the agent leads the steps in order, and stops for the person's approval at each stage. In human directed, the person says what to do, and the agent does it.
+A workflow agent follows each routine in force in three modes, with its plugin's actions. In human only, the person does each step themselves, with the `okb` command. In AI guided, the agent leads the steps in order, and stops for the person's approval at each stage. In human directed, the person says what to do, and the agent does it.
 
 The lesson uses one of the firm's routines, from a workflow agent the folder has. A firm with no workflow agent yet uses the `okb:records` skill's list of the tasks assigned to the person. It changes nothing.
 

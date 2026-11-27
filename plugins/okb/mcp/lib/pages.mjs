@@ -116,11 +116,12 @@ export const TOOLS = [
   },
   {
     name: "draw_state_machine",
-    description: "Draw a state machine page from a routine model record that okb_get_record wrote to a file. A routine model's nodes are routines, states, data, rules, actors and applications, whether it was made from a state machine page or written as a payload. Any other model is drawn with draw_graph. Both paths are full paths directly inside the agent folder, and the page is a new file there; nothing is replaced. Beside the page it writes the page's outline, <name>.outline.md, and, where a Chromium browser is found, its picture, <name>.png. Read both before giving the page to the person. Returns the page's path and size, outline_file, picture_file and the number of findings, never the page's content.",
+    description: "Draw a state machine page from a routine model record that okb_get_record wrote to a file. A routine model's nodes are routines, states, data, rules, actors and applications, whether it was made from a state machine page or written as a payload. Any other model is drawn with draw_graph. Both paths are full paths directly inside the agent folder, and the page is a new file there; nothing is replaced. Beside the page it writes the page's outline, <name>.outline.md, and, where a Chromium browser is found, its picture, <name>.png. With earlier_file, the outline ends with the changes from that version. Read both before giving the page to the person. Returns the page's path and size, outline_file, picture_file and the number of findings, never the page's content.",
     inputSchema: {
       type: "object",
       properties: {
         record_file: { type: "string", description: "The record file, as okb_get_record's result_file wrote it." },
+        earlier_file: { type: "string", description: "An earlier version of the same model, such as the version in force, as okb_get_record wrote it. The page then marks each state added or changed since it, and the outline names each state added, removed or changed. Optional." },
         page_file: { type: "string", description: "The new page file, ending in .html." },
       },
       required: ["record_file", "page_file"],
@@ -156,17 +157,18 @@ export const TOOLS = [
   },
   {
     name: "draw_sop",
-    description: "Write a standard operating procedure for one routine, as an A4 page ready for print_pdf, from its approved model version: its purpose, its trigger, each state with who, what, the tool and the checks, the handovers, the exceptions, the drawn state machine and the glossary terms it uses. Every path is a full path directly inside the agent folder, and the page is a new file there; nothing is replaced. Beside the page it writes the page's outline, <name>.outline.md, and, where a Chromium browser is found, its picture, <name>.png. Read both before printing the page. Where the person is signed in and OKB holds the firm's Brand record in General, the page takes its palette, fonts and logo; otherwise it is plain. Returns the page's path and size, the counts, outline_file, picture_file, the number of findings and look, brand or plain, never the page's content.",
+    description: "Write a standard operating procedure for one routine, as an A4 page ready for print_pdf, from its version in force, which okb_routine_in_force names: the version and its approval on the first page, then its purpose, its trigger, each of its states with who, what, the tool, the checks and its run attributes, the handovers, the exceptions, the drawn state machine and the glossary terms it uses. A version that is not the one in force is refused. Every path is a full path directly inside the agent folder, and the page is a new file there; nothing is replaced. Beside the page it writes the page's outline, <name>.outline.md, and, where a Chromium browser is found, its picture, <name>.png. Read both before printing the page. Where the person is signed in and OKB holds the firm's Brand record in General, the page takes its palette, fonts and logo; otherwise it is plain. Returns the page's path and size, the counts, outline_file, picture_file, the number of findings and look, brand or plain, never the page's content.",
     inputSchema: {
       type: "object",
       properties: {
-        record_file: { type: "string", description: "The routine's approved model version, as okb_get_record's or okb_get_history's result_file wrote it." },
-        version_id: { type: "string", description: "The approved version's id. Needed when record_file is a page of okb_get_history." },
+        record_file: { type: "string", description: "The routine's version in force, as okb_get_record wrote it with the version's change_no as p_cutoff, or a page of okb_get_history holding it." },
+        in_force_file: { type: "string", description: "okb_routine_in_force's result for the model and the one routine, as its result_file wrote it." },
+        version_id: { type: "string", description: "The version in force's id, to check against in_force_file. Optional." },
         glossary_file: { type: "string", description: "okb_get_reference's result for the glossary, as its result_file wrote it." },
         picture_file: { type: "string", description: "The picture of the routine's state machine page, the <name>.png draw_state_machine wrote beside it." },
         page_file: { type: "string", description: "The new page file, ending in .html." },
       },
-      required: ["record_file", "glossary_file", "picture_file", "page_file"],
+      required: ["record_file", "in_force_file", "glossary_file", "picture_file", "page_file"],
       additionalProperties: false,
     },
   },
@@ -666,7 +668,7 @@ export function createTools({ agentFolder = null, readBrand = null }) {
         if (args.plan_id !== undefined) extra.push(`--plan-id=${String(args.plan_id)}`);
         return asContent(await convert("board_page.py", args.progress_files.map(String), args.page_file, extra));
       }
-      if (name === "draw_state_machine") return asContent(await convert("model_to_page.py", args.record_file, args.page_file));
+      if (name === "draw_state_machine") return asContent(await convert("model_to_page.py", args.earlier_file === undefined ? args.record_file : [args.record_file, args.earlier_file], args.page_file));
       if (name === "state_machine_payload") {
         // One argument, so a description starting with "-" is not taken for an option.
         const extra = args.description === undefined ? [] : [`--description=${String(args.description)}`];
@@ -684,7 +686,7 @@ export function createTools({ agentFolder = null, readBrand = null }) {
         if (!read.ok) return asContent(read);
         const extra = [`--picture=${basename(picture.path)}`, ...(args.version_id === undefined ? [] : [`--version-id=${String(args.version_id)}`])];
         const dressed = dressing(await brand(), "page-brand.css");
-        return asContent(lookOf(await convert("sop_page.py", [args.record_file, args.glossary_file], args.page_file, extra, undefined, [{ name: basename(picture.path), body: read.body }], undefined, dressed), dressed));
+        return asContent(lookOf(await convert("sop_page.py", [args.record_file, args.glossary_file, args.in_force_file], args.page_file, extra, undefined, [{ name: basename(picture.path), body: read.body }], undefined, dressed), dressed));
       }
       if (name === "report_page") {
         if (!/\.md$/i.test(String(args.markdown_file ?? ""))) return asContent({ ok: false, problem: "markdown_file must end in .md." });

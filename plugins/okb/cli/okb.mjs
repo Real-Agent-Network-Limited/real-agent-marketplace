@@ -126,8 +126,9 @@ export function signInArgs(argv, email, cwd = process.cwd()) {
   return [SIGN_IN, ...(email && !named ? ["--email", email] : []), ...argv];
 }
 
-// A tool argument that names a local file: a top-level `file`, or a name ending in _file or _files.
-const isFileArgument = name => name === "file" || /_files?$/.test(name);
+// A tool's own argument that names a local file: a top-level `file`, or a name ending in _file or _files. An OKB
+// function's arguments are the database's, so its only local file is result_file, where the CLI writes the answer.
+const isFileArgument = (tool, key) => tool.startsWith("okb_") ? key === "result_file" : key === "file" || /_files?$/.test(key);
 
 /** The command line's options, name and arguments. */
 export function parse(argv, cwd = process.cwd()) {
@@ -153,13 +154,13 @@ export function parse(argv, cwd = process.cwd()) {
         const held = out.args[name] ?? {};
         if (held === null || typeof held !== "object" || Array.isArray(held)) throw new Error(`${name} is given as a value and as fields.`);
         if (field in held) throw new Error(`${key} is given twice.`);
-        out.args[name] = { ...held, [field]: value(field, text, cwd, false) };
+        out.args[name] = { ...held, [field]: value(field, text, cwd) };
       } else if (key in out.args) {
         // A file list may be given one file at a time.
         if (!/_files$/.test(key)) throw new Error(`${key} is given twice.`);
-        out.args[key] = [].concat(out.args[key], value(key, text, cwd));
+        out.args[key] = [].concat(out.args[key], value(key, text, cwd, isFileArgument(out.name, key)));
       } else {
-        out.args[key] = value(key, text, cwd);
+        out.args[key] = value(key, text, cwd, isFileArgument(out.name, key));
       }
     }
   }
@@ -169,8 +170,8 @@ export function parse(argv, cwd = process.cwd()) {
   return out;
 }
 
-/** One argument's value: a file's JSON, JSON, or text. A top-level file argument's paths are made full; a field of an object, such as a bucket path, stays as typed. */
-function value(key, text, cwd, topLevel = true) {
+/** One argument's value: a file's JSON, JSON, or text. A tool's file argument's paths are made full; anything else, such as a field of an object or a bucket path, stays as typed. */
+function value(key, text, cwd, localFile = false) {
   let v;
   if (text.startsWith("@")) {
     const file = resolve(cwd, text.slice(1));
@@ -182,7 +183,7 @@ function value(key, text, cwd, topLevel = true) {
     const json = /^\s*[[{"]/.test(text) || ["true", "false", "null"].includes(text.trim());
     if (json) { try { v = JSON.parse(text); } catch { v = text; } } else v = text;
   }
-  if (topLevel && isFileArgument(key)) {
+  if (localFile) {
     if (typeof v === "string") return resolve(cwd, v);
     if (Array.isArray(v)) return v.map(one => resolve(cwd, String(one)));
     // A single file name for a list, such as progress_files=progress.json.
@@ -219,6 +220,11 @@ export function account(project, email, home = homedir(), cwd = process.cwd()) {
 export async function run({ project, email, name, args }, cwd = process.cwd(), home = homedir()) {
   const pages = pageTools({ agentFolder: cwd });
   const asked = name ?? "";
+  // A shared login's password: refused in a Claude Code session, which sets CLAUDECODE, so no agent reads or types one
+  // through okb. A person opens a login on the Login card.
+  const loginFunction = fn => ["okb_open_login", "okb_save_login"].includes(String(fn ?? "").trim().toLowerCase().replace(/^okb\./, ""));
+  if (process.env.CLAUDECODE && (loginFunction(asked) || (asked === "rpc" && loginFunction(args?.function))))
+    return { ok: false, problem: "A shared login's password is opened, typed and generated on the Login card alone." };
   let content;
   if (PAGE_TOOLS.some(t => t.name === asked)) {
     if (["draw_board", "draw_graph"].includes(asked)) {

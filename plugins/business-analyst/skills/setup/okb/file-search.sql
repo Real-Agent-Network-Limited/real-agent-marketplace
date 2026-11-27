@@ -62,7 +62,7 @@ create table file_search.chunk (
  body text not null check (length(body) between 1 and 4000),
  words tsvector generated always as (to_tsvector('english'::regconfig, body)) stored,
  embedding extensions.vector(384),
- state text not null default 'waiting' check (state in ('waiting','embedded','failed')),
+ state text not null default 'waiting' check (state in ('waiting','embedded','failed','retired')),
  attempts integer not null default 0 check (attempts>=0),
  last_attempt_at timestamptz,
  error text,
@@ -470,7 +470,8 @@ grant execute on function file_search.graph_key(text) to authenticated;
 -- A move keeps the file's id and content, so it is not queued again; search reads its name live.
 -- A deleted file, or one moved out of the indexed buckets, has its versions retired. A retired
 -- or failed version whose content comes back is restored: extracted if its chunks remain, else
--- waiting, with its attempts reset.
+-- waiting, with its attempts reset. A content that comes back is queued again as the file's latest, so search and the
+-- graph reader read it. Only the file's current content's chunks wait for their vectors.
 create function file_search.queue_object() returns trigger
 language plpgsql security definer set search_path=pg_catalog as $$
 begin
@@ -494,9 +495,15 @@ begin
  insert into file_search.file_version(object_id, content_tag, bucket_id, name)
  values (new.id, coalesce(new.metadata->>'eTag', new.updated_at::text), new.bucket_id, new.name)
  on conflict (object_id, content_tag) do update set
-  state=case when exists(select 1 from file_search.chunk c where c.version_id=file_version.version_id) then 'extracted' else 'waiting' end,
-  attempts=0, error=null, finished_at=null
- where file_version.state in ('retired','failed');
+  state=case when file_version.state not in ('retired','failed') then file_version.state
+   when exists(select 1 from file_search.chunk c where c.version_id=file_version.version_id) then 'extracted' else 'waiting' end,
+  attempts=case when file_version.state in ('retired','failed') then 0 else file_version.attempts end,
+  error=case when file_version.state in ('retired','failed') then null else file_version.error end,
+  finished_at=case when file_version.state in ('retired','failed') then null else file_version.finished_at end,
+  queued_at=clock_timestamp()
+ where file_version.state in ('retired','failed') or exists(select 1 from file_search.file_version n
+  where n.object_id=file_version.object_id and n.queued_at>file_version.queued_at);
+ perform file_search.chunks_follow_content(new.id, coalesce(new.metadata->>'eTag', new.updated_at::text));
  return new;
 end $$;
 revoke all on function file_search.queue_object() from public, anon, authenticated;
@@ -748,29 +755,57 @@ language sql volatile set search_path=pg_catalog as $$
  select * from file_search.claim_sentences(p_limit, 2147483647)
 $$;
 
--- A retired version's waiting sentences are retired, and a version that comes back makes them wait again.
-create or replace function file_search.retire_sentences(p_version_id uuid) returns integer
-language sql volatile set search_path=pg_catalog as $$
- with r as (update file_search.chunk_sentence s set state='retired' from file_search.chunk c
-  where c.version_id=p_version_id and s.chunk_id=c.chunk_id and s.state='waiting' returning 1)
- select count(*)::integer from r
-$$;
-revoke all on function file_search.retire_sentences(uuid) from public, anon, authenticated;
-create or replace function file_search.sentences_follow_version() returns trigger
+-- A retired version's waiting chunks and sentences are retired, and a version that comes back makes them wait again,
+-- so no claim passes over them. A purged version's chunks are deleted with it.
+create or replace function file_search.retire_chunks(p_version_id uuid) returns integer
+language plpgsql volatile set search_path=pg_catalog as $$
+declare n integer;
+begin
+ update file_search.chunk_sentence s set state='retired' from file_search.chunk c
+ where c.version_id=p_version_id and s.chunk_id=c.chunk_id and s.state='waiting';
+ update file_search.chunk set state='retired' where version_id=p_version_id and state='waiting';
+ get diagnostics n=row_count;
+ return n;
+end $$;
+revoke all on function file_search.retire_chunks(uuid) from public, anon, authenticated;
+create or replace function file_search.chunks_follow_version() returns trigger
 language plpgsql set search_path=pg_catalog as $$
 begin
  if new.state='retired' then
-  perform file_search.retire_sentences(new.version_id);
+  perform file_search.retire_chunks(new.version_id);
  elsif old.state='retired' and new.state<>'purged' then
+  update file_search.chunk set state='waiting' where version_id=new.version_id and state='retired';
   update file_search.chunk_sentence s set state='waiting' from file_search.chunk c
   where c.version_id=new.version_id and s.chunk_id=c.chunk_id and s.state='retired';
  end if;
  return null;
 end $$;
-revoke all on function file_search.sentences_follow_version() from public, anon, authenticated;
-drop trigger if exists sentences_follow_version on file_search.file_version;
-create trigger sentences_follow_version after update of state on file_search.file_version
- for each row when (old.state is distinct from new.state) execute function file_search.sentences_follow_version();
+revoke all on function file_search.chunks_follow_version() from public, anon, authenticated;
+create trigger chunks_follow_version after update of state on file_search.file_version
+ for each row when (old.state is distinct from new.state) execute function file_search.chunks_follow_version();
+
+-- A file's older content keeps its version and its embedded chunks, and its waiting chunks and sentences are
+-- retired. The current content's retired chunks and sentences wait again, unless its version is retired or purged.
+-- queue_object calls it each time a file's content lands. Returns how many chunks it retired.
+create or replace function file_search.chunks_follow_content(p_object_id uuid, p_content_tag text) returns integer
+language plpgsql volatile set search_path=pg_catalog as $$
+declare n integer;
+begin
+ update file_search.chunk_sentence s set state='retired' from file_search.chunk c, file_search.file_version v
+ where v.object_id=p_object_id and v.content_tag<>p_content_tag and c.version_id=v.version_id and s.chunk_id=c.chunk_id
+  and s.state='waiting';
+ update file_search.chunk c set state='retired' from file_search.file_version v
+ where v.object_id=p_object_id and v.content_tag<>p_content_tag and c.version_id=v.version_id and c.state='waiting';
+ get diagnostics n=row_count;
+ update file_search.chunk c set state='waiting' from file_search.file_version v
+ where v.object_id=p_object_id and v.content_tag=p_content_tag and v.state not in ('retired','purged')
+  and c.version_id=v.version_id and c.state='retired';
+ update file_search.chunk_sentence s set state='waiting' from file_search.chunk c, file_search.file_version v
+ where v.object_id=p_object_id and v.content_tag=p_content_tag and v.state not in ('retired','purged')
+  and c.version_id=v.version_id and s.chunk_id=c.chunk_id and s.state='retired';
+ return n;
+end $$;
+revoke all on function file_search.chunks_follow_content(uuid,text) from public, anon, authenticated;
 
 -- One sentence's vector, as '[n,n,...]', recorded as soon as it is made; or its error.
 create or replace function file_search.record_sentence_vector(p_sentence_id uuid, p_embedding text, p_error text)
@@ -1600,4 +1635,4 @@ revoke all on function file_search.graph_held_chunks() from public, anon;
 grant execute on function file_search.graph_held_chunks() to authenticated;
 
 -- The upgrades this build already contains, so a new project has none pending.
-insert into file_search.schema_upgrade(id) values ('0001-baseline'), ('0002-sentence-claim'), ('0003-graph-reader'), ('0004-claim-once'), ('0005-worker-budget') on conflict (id) do nothing;
+insert into file_search.schema_upgrade(id) values ('0001-baseline'), ('0002-sentence-claim'), ('0003-graph-reader'), ('0004-claim-once'), ('0005-worker-budget'), ('0006-retired-chunks') on conflict (id) do nothing;

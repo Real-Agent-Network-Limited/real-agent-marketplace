@@ -1,7 +1,7 @@
 {
   "name": "real-agent",
   "description": "The database operator, every member of staff's agent for their firm's Real Agent knowledge base, the organisational knowledge base (OKB), with the Dashboard button, which asks what is outstanding, and the skills every firm gets: adding staff, approving a model, getting started, ingesting from connectors, showing what is outstanding, updating plugins and support.",
-  "version": "0.21.0",
+  "version": "0.21.1",
   "author": {
     "name": "Real Agent"
   },

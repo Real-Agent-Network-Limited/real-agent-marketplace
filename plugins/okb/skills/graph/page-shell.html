@@ -384,6 +384,31 @@ function hl(){return hl=Object.assign||function(g){for(var A=1;A<arguments.lengt
      record holds — its reference and its name, each written once. The node
      type and the stored status are drawing chrome nobody wrote into the
      record, so the hover text leaves them out. */
+  /* The run attributes of a step, one line each, as the outline writes them: the workflow plugin a routine's steps
+     call, the step's action, the role that does it, the role that says yes before it runs, whose cases run without asking, each
+     case list, and its settings. A long list shows its first five and how many more, so a card stays readable. */
+  var LIST_SHOWN = 5;
+  function listText(value) {
+    var items = Array.isArray(value) ? value.map(String) : [String(value)];
+    if (!items.length) return 'every case';
+    var shown = items.slice(0, LIST_SHOWN).join(', ');
+    return items.length > LIST_SHOWN ? shown + ' and ' + (items.length - LIST_SHOWN) + ' more' : shown;
+  }
+  function spoken(key) { var name = String(key).replace(/_/g, ' '); return name.charAt(0).toUpperCase() + name.slice(1); }
+  function runLines(properties) {
+    var lines = [];
+    if (properties.plugin) lines.push({ label: 'Workflow plugin', text: String(properties.plugin) });
+    if (properties.action) lines.push({ label: 'Action', text: String(properties.action) });
+    if (properties.performed_by) lines.push({ label: 'Done by', text: String(properties.performed_by) });
+    if (properties.approval) lines.push({ label: 'Approval', text: String(properties.approval) });
+    if (properties.auto_for && properties.auto_for.length) lines.push({ label: 'Runs without asking for', text: listText(properties.auto_for) });
+    var cases = properties.cases && typeof properties.cases === 'object' ? properties.cases : {};
+    Object.keys(cases).forEach(function (name) { lines.push({ label: spoken(name), text: listText(cases[name]) }); });
+    var settings = properties.settings && typeof properties.settings === 'object' ? properties.settings : {};
+    var set = Object.keys(settings).map(function (name) { return name.replace(/_/g, ' ') + ' ' + (typeof settings[name] === 'object' ? JSON.stringify(settings[name]) : settings[name]); });
+    if (set.length) lines.push({ label: 'Settings', text: set.join('; ') });
+    return lines;
+  }
   /* One reading of a node, for the hover text and the details panel alike. */
   function describe(node) {
     var reference = String(node.reference || '').trim();
@@ -406,6 +431,7 @@ function hl(){return hl=Object.assign||function(g){for(var A=1;A<arguments.lengt
       if (properties.actors) links.push({ label: 'Performed by', text: properties.actors });
       if (properties.applications) links.push({ label: 'Applications', text: properties.applications });
       if (properties.data_records) links.push({ label: 'Data', text: properties.data_records });
+      runLines(properties).forEach(function (line) { links.push(line); });
     }
     if (links.length) parts.push({ lines: links });
     if (properties.handoff_text && properties.handoff_text !== description) parts.push({ text: properties.handoff_text });

@@ -1,4 +1,4 @@
--- okb_tests 1.11.0
+-- okb_tests 1.14.0
 -- OKB: setup tests, installed as stored functions in their own schema, okb_tests.
 -- Install this file once, as the postgres login, then run the checks part by part, in order:
 --   select okb_tests.parts();
@@ -1282,6 +1282,7 @@ begin
   ('okb_private.can_read_scope(uuid)','okb_identity'),
   ('okb_private.can_see_scope(uuid)','okb_identity'),
   ('okb_private.is_own_record(uuid,uuid)','okb_identity'),
+  ('okb_private.own_records_of(uuid)','okb_identity'),
   ('okb_private.scope_insert_for(uuid,uuid,text)','okb_identity'),
   ('okb_private.assert_request_scope(jsonb,uuid)','okb_identity'),
   ('okb_private.can_insert_record(uuid,text)','okb_identity'),
@@ -4616,8 +4617,8 @@ begin
 end $factor$;
 
 -- The graph reader, off until the firm's own Anthropic API key is in the Vault. With no key the schedule calls
--- nothing, whatever waits; with the key and no class in the glossary it calls nothing; with a class and a part
--- waiting it calls graph-reader. okb_get_graph_reader says which, and gives an administrator alone the month's cost.
+-- nothing, whatever waits; with the key and no class in the glossary it calls nothing, and okb_get_graph_reader says it
+-- waits for a class; with a class and a part waiting it calls graph-reader. okb_get_graph_reader says which, and gives an administrator alone the month's cost.
 -- The scopes it reads leave out private, sessions, Administration, Guides and plugin scopes. A read is fitted to the
 -- glossary: a type is written as the glossary writes its class, a relation keeps its relationship among its
 -- keywords, and each finding that fits none is dropped with its reason.
@@ -4658,7 +4659,7 @@ begin
   execute 'set local role authenticated';
   r:=okb.okb_get_graph_reader();
   execute 'reset role';
-  if (r->>'on')::boolean or not (r->'scopes') ? 'auth_test_graph' or r ? 'month_cost_usd' then
+  if (r->>'on')::boolean or (r->>'waiting_for_classes')::boolean or not (r->'scopes') ? 'auth_test_graph' or r ? 'month_cost_usd' then
    raise exception 'FAIL graph reader: okb_get_graph_reader with no key gave %',r; end if;
 
   -- The key, and no class in the glossary: still nothing is called.
@@ -4666,6 +4667,12 @@ begin
   -- A new build's glossary has no class. On a project whose glossary has one, this check has nothing to show.
   if not exists(select 1 from okb.glossary_term where kind='class') then
    if okb_private.graph_reader_dispatch() then raise exception 'FAIL graph reader: with no class in the glossary, the schedule called graph-reader'; end if;
+   perform set_config('request.jwt.claims',jsonb_build_object('sub',w,'role','authenticated')::text,true);
+   execute 'set local role authenticated';
+   r:=okb.okb_get_graph_reader();
+   execute 'reset role';
+   if not (r->>'on')::boolean or not coalesce((r->>'waiting_for_classes')::boolean,false) then
+    raise exception 'FAIL graph reader: with the key and no class in the glossary, okb_get_graph_reader gave %',r; end if;
   end if;
 
   -- A class and a relationship: the schedule calls graph-reader, and okb_get_graph_reader says it is on, with the
@@ -4681,7 +4688,7 @@ begin
    p_from_class=>'Graph test supplier',p_to_class=>'Graph test product'));
   r:=okb.okb_get_graph_reader();
   execute 'reset role';
-  if not (r->>'on')::boolean or not r ? 'month_cost_usd' or not r ? 'monthly_cap_usd' then
+  if not (r->>'on')::boolean or (r->>'waiting_for_classes')::boolean or not r ? 'month_cost_usd' or not r ? 'monthly_cap_usd' then
    raise exception 'FAIL graph reader: okb_get_graph_reader with the key gave the administrator %',r; end if;
   if not okb_private.graph_reader_dispatch() then raise exception 'FAIL graph reader: with the key, a class and a part waiting, the schedule did not call graph-reader'; end if;
 
@@ -4863,6 +4870,214 @@ begin
  end;
 end $sessions$;
 
+-- Shared logins: a reader opens a login and a person without a grant does not, a change keeps the previous password,
+-- a scope that holds a login is not deleted, a removal deletes its Vault secrets, and the audit log gives each add,
+-- change, removal and opening without a password.
+create function okb_tests.suite_41_logins() returns void language plpgsql set search_path = pg_catalog, public, extensions, okb, okb_private, okb_storage, storage, auth, file_search, okb_tests as $logins$
+declare h uuid:=gen_random_uuid(); r uuid:=gen_random_uuid(); o uuid:=gen_random_uuid(); w uuid:=gen_random_uuid(); sc uuid:=gen_random_uuid();
+ ag uuid:=gen_random_uuid(); bp uuid:=gen_random_uuid(); bt uuid:=gen_random_uuid(); res jsonb; lid uuid; s1 uuid; s2 uuid; other uuid; who uuid; n int; msg text; started timestamptz:=clock_timestamp();
+ first_pw text:='Stored-check first '||md5(random()::text); second_pw text:='Stored-check second '||md5(random()::text); third_pw text:='Stored-check third '||md5(random()::text);
+begin
+ begin
+  insert into auth.users(id) values(h),(r),(o),(w),(ag),(bp),(bt);
+  perform okb_tests.approve_fixture(null);
+  insert into okb.actor(actor_id,auth_user_id,display_name,actor_kind,accountable_human_id,authority_class,enabled)
+   values(h,h,'Logins test administrator','human',h,'administrator',true);
+  perform okb_tests.approve_fixture(h);
+  insert into okb.actor(actor_id,auth_user_id,display_name,actor_kind,accountable_human_id,authority_class,enabled)
+   values(r,r,'Logins test reader','human',r,'restricted',true),(o,o,'Logins test outsider','human',o,'restricted',true),
+    (w,w,'Logins test own records','human',w,'restricted',true),(ag,ag,'Logins test agent','agent',r,'restricted',true),
+    (bp,bp,'Logins test (Real Agent)','human',bp,'restricted',true),(bt,bt,'Logins test template','human',bt,'restricted',true);
+  perform set_config('okb.provisioning_actor','',true);
+  insert into okb.scope(scope_id,code,display_name,description,created_by) values(sc,'auth_test_logins','Logins test scope','Rolled-back fixture',h);
+  perform okb_private.provision_grant(h,gen_random_uuid(),ag,sc,array['evidence'],null,array['read'],null::timestamptz,'Rolled-back fixture');
+  perform okb_private.provision_grant(h,gen_random_uuid(),bp,sc,array['evidence'],null,array['read'],null::timestamptz,'Rolled-back fixture');
+  perform okb_private.provision_grant(h,gen_random_uuid(),bt,sc,array['evidence'],null,array['read'],null::timestamptz,'The real_agent access template.');
+  other:=vault.create_secret('Stored-check other secret',null,'Another secret');
+
+  -- No client role reaches the Vault functions, and the two that take or give a password take it in a POST alone.
+  if has_function_privilege('authenticated','okb_private.login_secret_read(uuid)','execute')
+   or has_function_privilege('service_role','okb_private.login_secret_read(uuid)','execute')
+   or has_function_privilege('authenticated','okb_private.login_secret_new(text)','execute')
+   or has_function_privilege('authenticated','okb_private.open_login(text)','execute') then
+   raise exception 'FAIL logins: a client role runs a Vault function'; end if;
+  if exists(select 1 from pg_proc where oid in ('okb.okb_save_login(uuid,text,text,text,text,text,text)'::regprocedure,'okb.okb_open_login(text)'::regprocedure) and provolatile<>'v') then
+   raise exception 'FAIL logins: okb_save_login or okb_open_login is not volatile, so the Data API takes it in a URL'; end if;
+  if exists(select 1 from pg_proc p join pg_namespace s on s.oid=p.pronamespace where s.nspname='okb_private' and p.proname like 'login_secret_%'
+   and pg_get_userbyid(p.proowner)<>'postgres') then
+   raise exception 'FAIL logins: a Vault function is not owned by postgres'; end if;
+
+  -- The administrator grants the reader read, and the own-records holder read on their own records alone.
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',h,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  perform pg_temp.raised(okb.okb_grant_permission(gen_random_uuid(),r,sc,array['evidence'],null,array['read'],null,'Logins test'));
+  perform pg_temp.raised(okb.okb_grant_permission(gen_random_uuid(),w,sc,array['evidence'],null,array['read','create'],null,'Logins test',true));
+  -- The administrator adds a login, and changes its password twice.
+  res:=pg_temp.raised(okb.okb_save_login(null,'auth_test_logins','Logins test portal','https://portal.example.com/','ops@example.com','Test notes',first_pw));
+  lid:=(res->'login'->>'login_id')::uuid;
+  if res->>'saved'<>'added' or lid is null or res::text like '%'||first_pw||'%' then raise exception 'FAIL logins: the add gave %',res; end if;
+  res:=pg_temp.raised(okb.okb_save_login(lid,null,null,null,null,null,second_pw));
+  if res->>'saved'<>'changed' or res->'fields'<>'["password"]'::jsonb or res->'login'->>'has_previous'<>'true' then raise exception 'FAIL logins: the change gave %',res; end if;
+  execute 'reset role';
+  select secret_id,previous_secret_id into s1,s2 from okb_private.shared_login where login_id=lid;
+  execute 'set local role authenticated';
+  perform pg_temp.raised(okb.okb_save_login(lid,null,null,null,null,null,third_pw));
+  -- A scope that holds a login is not deleted, and the refusal names the login.
+  msg:=null;
+  begin perform okb.okb_delete_scope('auth_test_logins','Logins test'); exception when sqlstate '23503' then msg:=sqlerrm; end;
+  if msg is distinct from 'The scope Logins test scope holds the shared login Logins test portal (ops@example.com); a scope is deleted only when it holds none' then
+   raise exception 'FAIL logins: a scope that holds a login was deleted, or refused as %',msg; end if;
+  execute 'reset role';
+  -- The password before the change is the previous one, and the one before it is gone from Vault.
+  if (select previous_secret_id from okb_private.shared_login where login_id=lid) is distinct from s1 or exists(select 1 from vault.secrets where id=s2) then
+   raise exception 'FAIL logins: a change did not keep the previous password and delete the one before it'; end if;
+  -- A Vault secret that is not a login's is not read through the login functions.
+  if okb_private.login_secret_read(other) is not null then raise exception 'FAIL logins: login_secret_read reads another secret'; end if;
+
+  -- The reader lists and opens it, by its service in any case.
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',r,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  res:=okb.okb_find_logins();
+  if jsonb_array_length(res->'logins')<>1 or res::text like '%Stored-check%' then raise exception 'FAIL logins: the reader''s list is %',res; end if;
+  res:=pg_temp.raised(okb.okb_open_login('LOGINS TEST PORTAL'));
+  if res->>'password'<>third_pw or res->>'previous_password'<>second_pw or res->>'username'<>'ops@example.com' then
+   raise exception 'FAIL logins: the reader opened %, %',res->>'username',res->>'service'; end if;
+  -- The reader is refused a change and a removal.
+  res:=okb.okb_save_login(lid,null,null,null,null,null,'Stored-check refused');
+  if res->>'refused' is distinct from 'true' then raise exception 'FAIL logins: the reader changed a login'; end if;
+  res:=okb.okb_remove_login(lid);
+  execute 'reset role';
+  if res->>'refused' is distinct from 'true' then raise exception 'FAIL logins: the reader removed a login'; end if;
+
+  -- A person without a grant, and one whose grant is limited to their own records, neither list nor open it.
+  foreach who in array array[o,w] loop
+   perform set_config('request.jwt.claims',jsonb_build_object('sub',who,'role','authenticated')::text,true);
+   execute 'set local role authenticated';
+   if jsonb_array_length(okb.okb_find_logins()->'logins')<>0 then raise exception 'FAIL logins: a person without a full grant lists the login'; end if;
+   res:=okb.okb_open_login(lid::text);
+   execute 'reset role';
+   if res->>'refused' is distinct from 'true' or res ? 'password' then raise exception 'FAIL logins: a person without a full grant opened the login: %',res->>'problem'; end if;
+  end loop;
+  -- Real Agent's staff, named so or given a grant by the real_agent template, with a full grant, neither list nor open it.
+  foreach who in array array[bp,bt] loop
+   perform set_config('request.jwt.claims',jsonb_build_object('sub',who,'role','authenticated')::text,true);
+   execute 'set local role authenticated';
+   if jsonb_array_length(okb.okb_find_logins()->'logins')<>0 then raise exception 'FAIL logins: Real Agent''s staff list the login'; end if;
+   res:=okb.okb_open_login(lid::text);
+   execute 'reset role';
+   if res->>'refused' is distinct from 'true' or res ? 'password' then raise exception 'FAIL logins: Real Agent''s staff opened the login'; end if;
+  end loop;
+  -- An agent actor answering to the reader, with the reader's full grant, neither lists nor opens it.
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',ag,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  if jsonb_array_length(okb.okb_find_logins()->'logins')<>0 then raise exception 'FAIL logins: an agent actor lists the login'; end if;
+  res:=okb.okb_open_login(lid::text);
+  execute 'reset role';
+  if res->>'refused' is distinct from 'true' or res ? 'password' then raise exception 'FAIL logins: an agent actor opened the login'; end if;
+  if (select count(*) from okb.refusal_event where function_name='okb_open_login' and actor_id in (o,w))<>2 then
+   raise exception 'FAIL logins: the refused openings are not logged'; end if;
+
+  -- The administrator removes it, and its Vault secrets go with it.
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',h,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  res:=pg_temp.raised(okb.okb_remove_login(lid));
+  execute 'reset role';
+  if res->>'removed'<>'true' or exists(select 1 from okb_private.shared_login where login_id=lid)
+   or exists(select 1 from vault.secrets where description='A shared login''s password in OKB' and id in (s1,s2)) then
+   raise exception 'FAIL logins: the removal left the login or its secrets'; end if;
+
+  -- The audit log gives the add, the two changes, the opening and the removal, and holds no password.
+  execute 'set local role authenticated';
+  res:=okb.okb_get_audit(started,clock_timestamp()+interval '1 minute');
+  execute 'reset role';
+  select count(*) into n from jsonb_array_elements(res->'items') x where x->>'login_id'=lid::text;
+  if n<>5 or (select array_agg(x->>'event' order by x->>'at') from jsonb_array_elements(res->'items') x where x->>'login_id'=lid::text)
+   <>array['login_added','login_changed','login_changed','login_opened','login_removed'] then
+   raise exception 'FAIL logins: the audit log gives % rows for the login',n; end if;
+  if res::text like '%Stored-check%' or exists(select 1 from okb.refusal_event where problem like '%Stored-check%') then
+   raise exception 'FAIL logins: a password is in the audit log'; end if;
+  perform set_config('request.jwt.claims','{}',true);
+  raise exception using errcode='PHT41',message='Rollback logins fixtures';
+ exception when sqlstate 'PHT41' then null;
+ end;
+end $logins$;
+
+-- Upgrade 0015-own-records-set: own_records_of gives the records is_own_record gives, for every actor, and every
+-- seat reads the same records with readable_records as it did when each record was checked with is_own_record.
+create function okb_tests.suite_43_own_records_set() returns void language plpgsql set search_path = pg_catalog, public, extensions, okb, okb_private, okb_storage, storage, auth, file_search, okb_tests as $ownset$
+declare h uuid:=gen_random_uuid(); b uuid:=gen_random_uuid(); ag uuid:=gen_random_uuid(); c uuid:=gen_random_uuid(); d uuid:=gen_random_uuid();
+ s uuid:=gen_random_uuid(); s2 uuid:=gen_random_uuid(); who uuid; x record; want uuid[]; got uuid[]; f uuid[]:='{}'; seats int:=0;
+ kinds text[]:=array['activity','evidence'];
+begin
+ begin
+  insert into auth.users(id) values(h),(b),(ag),(c),(d);
+  perform okb_tests.approve_fixture(null);
+  insert into okb.actor(actor_id,auth_user_id,display_name,actor_kind,accountable_human_id,authority_class,enabled)
+   values(h,h,'Own set test administrator','human',h,'administrator',true);
+  perform okb_tests.approve_fixture(h);
+  insert into okb.actor(actor_id,auth_user_id,display_name,actor_kind,accountable_human_id,authority_class,enabled)
+   values(b,b,'Own set test person B','human',b,'restricted',true),(ag,ag,'Own set test agent of B','agent',b,'restricted',true),
+    (c,c,'Own set test person C','human',c,'restricted',true),(d,d,'Own set test person D','human',d,'restricted',true);
+  perform set_config('okb.provisioning_actor','',true);
+  insert into okb.scope(scope_id,code,display_name,description,created_by) values(s,'own_set_test','Own set test scope','Rolled-back fixture',h);
+  insert into okb.scope(scope_id,code,display_name,description,created_by) values(s2,'own_set_test_b','Own set test scope B','Rolled-back fixture',h);
+  -- B, B's agent and C hold grants limited to their own records in the scope. D reads and saves in the scope whole,
+  -- and B saves in scope B too.
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',h,'role','authenticated')::text,true);
+  execute 'set local role authenticated';
+  foreach who in array array[b,ag,c] loop
+   perform pg_temp.raised(okb.okb_grant_permission(gen_random_uuid(),who,s,kinds,null,array['read','create','edit'],null,'Own set test',true));
+  end loop;
+  perform pg_temp.raised(okb.okb_grant_permission(gen_random_uuid(),d,s,kinds,null,array['read','create','edit'],null,'Own set test'));
+  perform pg_temp.raised(okb.okb_grant_permission(gen_random_uuid(),b,s2,kinds,null,array['read','create','edit'],null,'Own set test'));
+  execute 'reset role';
+  -- Each saves a record in the scope, and B one in scope B.
+  for x in select * from (values (b,'own_set_test'),(ag,'own_set_test'),(c,'own_set_test'),(d,'own_set_test'),(b,'own_set_test_b')) v(who,code) loop
+   perform set_config('request.jwt.claims',jsonb_build_object('sub',x.who,'role','authenticated')::text,true);
+   execute 'set local role authenticated';
+   f:=f||(pg_temp.raised(okb.okb_add_record(x.code,'evidence','Own set test evidence','Own set test','{"summary":"Seen","standing":"stated"}'))->>'record_id')::uuid;
+   execute 'reset role';
+  end loop;
+  perform set_config('request.jwt.claims','{}',true);
+
+  -- own_records_of gives the records is_own_record gives, for every actor.
+  for x in select a.actor_id from okb.actor a loop
+   want:=array(select r.record_id from okb.record r where okb_private.is_own_record(x.actor_id,r.record_id) order by 1);
+   got:=array(select y from okb_private.own_records_of(x.actor_id) y order by 1);
+   if got is distinct from want then raise exception 'FAIL own records set: own_records_of(%) gives % and is_own_record gives %',x.actor_id,got,want; end if;
+  end loop;
+  if array(select y from okb_private.own_records_of(b) y where y=any(f) order by 1) is distinct from array(select y from unnest(array[f[1],f[2],f[5]]) y order by 1)
+   or array(select y from okb_private.own_records_of(c) y where y=any(f)) is distinct from array[f[3]] then
+   raise exception 'FAIL own records set: B''s own records are % and C''s %',array(select okb_private.own_records_of(b)),array(select okb_private.own_records_of(c)); end if;
+  raise notice 'ok - own_records_of gives the records is_own_record gives, for every actor';
+
+  -- Every seat, each enabled actor with a sign-in, reads with readable_records the records it read when each was checked
+  -- with is_own_record.
+  for x in select a.actor_id,a.auth_user_id from okb.actor a where a.enabled and a.auth_user_id is not null loop
+   want:=array(select r.record_id from okb.record r where exists(select 1 from okb_private.read_grants(x.actor_id) g where g.scope_id=r.scope_id
+    and (g.record_kinds is null or r.kind=any(g.record_kinds)) and (g.record_id is null or g.record_id=r.record_id)
+    and case when g.own_records then okb_private.is_own_record(g.actor_id,r.record_id) else true end) order by 1);
+   perform set_config('request.jwt.claims',jsonb_build_object('sub',x.auth_user_id,'role','authenticated','aal','aal2')::text,true);
+   execute 'set local role okb_reader';
+   got:=array(select y from okb_private.readable_records() y order by 1);
+   execute 'reset role';
+   perform set_config('request.jwt.claims','{}',true);
+   if got is distinct from want then raise exception 'FAIL own records set: actor % reads % records and read % before',x.actor_id,cardinality(got),cardinality(want); end if;
+   seats:=seats+1;
+  end loop;
+  perform set_config('request.jwt.claims',jsonb_build_object('sub',b,'role','authenticated')::text,true);
+  execute 'set local role okb_reader';
+  got:=array(select y from okb_private.readable_records(s,null,null,null,null) y where y=any(f) order by 1);
+  execute 'reset role';
+  perform set_config('request.jwt.claims','{}',true);
+  if got is distinct from array(select y from unnest(array[f[1],f[2]]) y order by 1) then
+   raise exception 'FAIL own records set: B reads % in the scope, not its own and its agent''s',got; end if;
+  raise notice 'ok - each of % seats reads the records it read before, and B its own and its agent''s',seats;
+  raise exception using errcode='PHT43',message='Rollback own records set fixtures';
+ exception when sqlstate 'PHT43' then null;
+ end;
+end $ownset$;
+
 -- The parts the checks run in, in order. Each part's suites finish in under 45 seconds: inside the
 -- business analyst agent's statement_timeout, and inside the Supabase SQL Editor's limit, which is
 -- over 70 seconds. Suite 23 runs in a part with only suite 35: its saves take longer as OKB grows.
@@ -4872,10 +5087,10 @@ create function okb_tests.part_list() returns table(part int, suites text[]) lan
   (2,array['suite_06_history','suite_07_plan_boundary','suite_08_scoped_grants','suite_09_grant_expiry','suite_10_actor_history',
    'suite_11_provisioning','suite_12_grants','suite_13_files','suite_14_search','suite_15_record_deletion','suite_16_applications',
    'suite_17_own_record_and_paging','suite_18_audit','suite_19_reference','suite_21_find_records','suite_22_sign_ins']),
-  (3,array['suite_23_task_functions','suite_35_refusal_log']),
+  (3,array['suite_23_task_functions','suite_35_refusal_log','suite_41_logins']),
   (4,array['suite_24_record_move','suite_25_scope_rename','suite_26_own_records','suite_27_scope_delete',
    'suite_28_advisors','suite_29_owners','suite_31_links_through_state','suite_33_permission_checks','suite_34_private_scopes','suite_36_access_templates',
-   'suite_37_administration_and_plugin_scopes','suite_38_second_factor','suite_39_graph_reader','suite_40_private_sessions'])
+   'suite_37_administration_and_plugin_scopes','suite_38_second_factor','suite_39_graph_reader','suite_40_private_sessions','suite_43_own_records_set'])
 $parts$;
 
 -- The number of parts, and each part's suites.
@@ -4946,4 +5161,4 @@ end $run$;
 
 revoke execute on all functions in schema okb_tests from public, anon, authenticated, service_role;
 
-comment on function okb_tests.run() is 'okb_tests 1.11.0';
+comment on function okb_tests.run() is 'okb_tests 1.14.0';

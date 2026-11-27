@@ -42,7 +42,11 @@ PARTICIPATION_TAG = {"precondition": "precondition", "supporting_process": "supp
 # The order a page lists a node's properties in.
 PROPERTY_ORDER = ["mode", "stored_status", "future_state_model_id", "design_basis", "description", "handoff_text", "routine",
                   "reference", "evidence_status", "node_type", "actors", "applications",
-                  "data_records", "carried_records"]
+                  "data_records", "carried_records", "plugin", "action", "performed_by", "approval", "auto_for",
+                  "cases", "settings"]
+# The run attributes an activity may hold, which the agent reads to run the step, as the graph skill's "The run
+# attributes" sets out. A routine node may name the workflow plugin whose actions its steps call, as plugin.
+RUN_ATTRIBUTES = ("action", "performed_by", "approval", "auto_for", "cases", "settings")
 LINK_CATEGORY = {"actor": "actors", "application": "applications"}
 LINK_TYPES = {"performed_by", "occurs_in", "reads_from", "writes_to"}
 DRAWN_EDGE_TYPES = {"flow", "sequence", "consequence", "dependency"}
@@ -359,6 +363,48 @@ def to_payload(graph_data, sm_data, *, title, source_name, source_sha256, descri
     if [g["key"] for g in graph_data["groups"]] != [g["key"] for g in graph_back["groups"]]:
         machine_attributes["group_order"] = [g["key"] for g in graph_data["groups"]]
     return payload
+
+
+STATE_TYPES = ("start", "activity", "end", "dead_end", "gap")
+
+
+def changes(earlier, later):
+    """Each state added, removed or changed from the earlier payload to the later one, matched by its id, in the later
+    one's order, then the removed ones: {"id", "reference", "name", "routine", "change", "fields"}. A state is changed when
+    its name, an attribute, its routine or where its flows go differ; fields names each one."""
+    def states(payload):
+        graph = payload["graph"]
+        nodes = {n["id"]: n for n in graph["nodes"]}
+        part_of = {e["source"]: e["target"] for e in graph["edges"] if e["type"] == "part_of"}
+        flows = {}
+        for e in graph["edges"]:
+            if e["type"] in ("flow", "sequence"):
+                flows.setdefault(e["source"], []).append((e["target"], e.get("attributes", {}).get("label", "")))
+        out = {}
+        for n in graph["nodes"]:
+            if n["type"] not in STATE_TYPES:
+                continue
+            a = {k: v for k, v in n.get("attributes", {}).items() if k != "page_overrides"}
+            routine = nodes.get(part_of.get(n["id"]), {})
+            out[n["id"]] = {"name": n["label"], "attributes": a, "reference": str(a.get("reference", "")),
+                            "routine": routine.get("label", ""), "flows": sorted(flows.get(n["id"], []))}
+        return out
+    before, after = states(earlier), states(later)
+    found = []
+    for node_id, s in after.items():
+        if node_id not in before:
+            found.append({"id": node_id, "reference": s["reference"], "name": s["name"], "routine": s["routine"], "change": "added", "fields": []})
+            continue
+        b = before[node_id]
+        fields = (["name"] if b["name"] != s["name"] else []) + (["routine"] if b["routine"] != s["routine"] else []) \
+            + sorted(k for k in set(b["attributes"]) | set(s["attributes"]) if b["attributes"].get(k) != s["attributes"].get(k)) \
+            + (["next"] if b["flows"] != s["flows"] else [])
+        if fields:
+            found.append({"id": node_id, "reference": s["reference"], "name": s["name"], "routine": s["routine"], "change": "changed", "fields": fields})
+    for node_id, b in before.items():
+        if node_id not in after:
+            found.append({"id": node_id, "reference": b["reference"], "name": b["name"], "routine": b["routine"], "change": "removed", "fields": []})
+    return found
 
 
 def stored(payload):
